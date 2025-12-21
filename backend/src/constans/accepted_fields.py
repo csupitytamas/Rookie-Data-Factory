@@ -4,4 +4,5 @@ ACCEPTED_ETL_FIELDS = {
     "field_mappings", "transformation", "selected_columns", "group_by_columns",
     "order_by_column", "order_direction", "custom_sql",
     "update_mode", "save_option", "column_order","file_format",
+    "parameters",  # Connector paraméterek
 }

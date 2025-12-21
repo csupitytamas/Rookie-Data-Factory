@@ -75,18 +75,29 @@ export default {
     return {
       pipelines: [],
       showModal: false,
-      modalPipeline: null
+      modalPipeline: null,
+      refreshIntervalId: null
     };
   },
   async mounted() {
-    try {
-      const response = await getDashboardPipelines();
-      this.pipelines = response.data;
-    } catch (err) {
-      console.error("Hiba a dashboard adatok betöltésekor:", err);
+    await this.fetchPipelines();
+    this.refreshIntervalId = setInterval(this.fetchPipelines, 5000);
+  },
+  unmounted() {
+    if (this.refreshIntervalId) {
+      clearInterval(this.refreshIntervalId);
+      this.refreshIntervalId = null;
     }
   },
   methods: {
+    async fetchPipelines() {
+      try {
+        const response = await getDashboardPipelines();
+        this.pipelines = response.data;
+      } catch (err) {
+        console.error("Hiba a dashboard adatok betöltésekor:", err);
+      }
+    },
     visibleRows(sampleData) {
       return sampleData.slice(0, MAX_ROWS);
     },

@@ -28,6 +28,7 @@ class ETLConfigBase(BaseModel):
 
     column_order: Optional[List[str]] = None
     file_format: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None  # Connector paraméterek (pl. {"indicator": "SP.POP.TOTL", "country": "USA"})
 
 
 
@@ -46,7 +47,9 @@ class ETLConfigResponse(ETLConfigBase):
     created_at: datetime
     modified_at: datetime
     alias: Optional[str] = None
-    user_id: int
+    target_table_name: Optional[str] = None
+    dag_id: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True

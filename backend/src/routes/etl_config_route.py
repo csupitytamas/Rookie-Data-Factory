@@ -7,12 +7,9 @@ from src.database.connection import get_db
 from src.models.etl_config_model import ETLConfig
 from src.models.status_model import Status
 from src.models.api_schemas_model import APISchema
-from src.models.users_model import User
 from src.utils.db_creation_util import generate_table_name, generate_dag_id, remove_version_suffix
 from src.constans.accepted_fields import ACCEPTED_ETL_FIELDS
 from src.common.airflow_client import pause_airflow_dag, unpause_airflow_dag
-from src.schemas.auth_schema import TokenData
-from src.utils.auth_helper import validate_token
 from datetime import datetime
 
 
@@ -23,7 +20,6 @@ router = APIRouter()
 def create_pipeline(
     config: ETLConfigBase,
     db: Session = Depends(get_db),
-    current_user: TokenData = Depends(validate_token)
 ):
     try:
         config_dict = config.dict()
@@ -37,7 +33,6 @@ def create_pipeline(
         dag_id = generate_dag_id(config.pipeline_name, version=1)
 
         filtered_data["target_table_name"] = table_name
-        filtered_data["user_id"] = current_user.user_id
         filtered_data["dag_id"] = dag_id
 
         new_pipeline = ETLConfig(**filtered_data, version=1)
@@ -62,13 +57,12 @@ def attach_alias(pipeline: ETLConfig):
     return pipeline
 
 @router.get("/all", response_model=list[ETLConfigResponse])
-def get_all_pipelines(db: Session = Depends(get_db), current_user: TokenData = Depends(validate_token)):
+def get_all_pipelines(db: Session = Depends(get_db)):
     pipelines = (
         db.query(ETLConfig)
         .join(Status, ETLConfig.id == Status.etlconfig_id)
         .filter(
             Status.current_status != "archived",
-            ETLConfig.user_id == current_user.user_id
         )
         .all()
     )
@@ -79,15 +73,11 @@ def get_all_pipelines(db: Session = Depends(get_db), current_user: TokenData = D
 def load_pipeline_data(
     pipeline_id: int,
     db: Session = Depends(get_db),
-    current_user: TokenData = Depends(validate_token)
 ):
     pipeline = db.query(ETLConfig).filter(ETLConfig.id == pipeline_id).first()
 
     if not pipeline:
         raise HTTPException(status_code=404, detail="Pipeline not found")
-
-    if pipeline.user_id != current_user.user_id:
-        raise HTTPException(status_code=403, detail="Nincs jogosultságod ehhez a pipeline-hoz.")
 
     return pipeline
 
@@ -97,15 +87,11 @@ def updated_pipeline(
         pipeline_id: int,
         config: ETLConfigUpdate,
         db: Session = Depends(get_db),
-        current_user: TokenData = Depends(validate_token)
 ):
     old_pipeline = db.query(ETLConfig).filter(ETLConfig.id == pipeline_id).first()
 
     if not old_pipeline:
         raise HTTPException(status_code=404, detail="Pipeline not found")
-
-    if old_pipeline.user_id != current_user.user_id:
-        raise HTTPException(status_code=403, detail="Ehhez a pipeline-hoz nincs jogosultságod.")
 
     try:
         updated_data = config.dict(exclude_unset=True)
@@ -123,7 +109,6 @@ def updated_pipeline(
             version=new_version,
             target_table_name=new_table_name,
             dag_id=dag_id,
-            user_id=current_user.user_id  # 🔒 új pipeline is hozzá legyen kötve
         )
 
         db.add(new_pipeline)

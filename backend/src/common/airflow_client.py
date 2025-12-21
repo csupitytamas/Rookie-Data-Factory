@@ -3,7 +3,7 @@ from requests.auth import HTTPBasicAuth
 
 AIRFLOW_API_URL = "http://localhost:8080/api/v1"
 USERNAME = "airflow"
-PASSWORD = "modmq888"
+PASSWORD = "airflow"
 
 def pause_airflow_dag(dag_id):
     url = f"{AIRFLOW_API_URL}/dags/{dag_id}"

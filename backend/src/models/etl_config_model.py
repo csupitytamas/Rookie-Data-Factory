@@ -1,5 +1,5 @@
 
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, JSON
 from datetime import datetime
 from src.database.connection import Base
 from sqlalchemy.orm import relationship, foreign
@@ -10,8 +10,6 @@ class ETLConfig(Base):
 
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    user = relationship("User", back_populates="etlconfigs")
     pipeline_name = Column(String, nullable=False)
     source = Column(String, nullable=False)
     schedule = Column(String, nullable=False)
@@ -40,6 +38,9 @@ class ETLConfig(Base):
     target_table_name = Column(String, nullable=True)
     dag_id = Column(String, nullable=True)
     file_format = Column(String, nullable=True)
+    
+    # Connector paraméterek - ezeket a UI-ban választják ki (pl. indicator, country, stb.)
+    parameters = Column(JSON, nullable=True)  # {"indicator": "SP.POP.TOTL", "country": "USA", "year": 2020}
 
     schema = relationship(
         "APISchema",

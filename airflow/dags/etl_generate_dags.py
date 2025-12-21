@@ -11,6 +11,7 @@ from transforms.field_mapping import field_mapping_helper, get_final_selected_co
     resolve_final_column_name, get_concat_columns, get_all_final_columns
 from transforms.transfomations import field_mapping, group_by, order_by, flatten_grouped_data
 from transforms.exporter import export_data
+from connector_helper import fetch_data_with_connector, fetch_data_legacy
 # PostgreSQL connection
 DB_URL = "postgresql+psycopg2://postgres:admin123@host.docker.internal:5433/ETL"
 engine = sa.create_engine(DB_URL)
@@ -21,6 +22,69 @@ default_args = {
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }
+def guess_type(key, value):
+    """
+    WHO-specifikus típuskövetkeztetés.
+    A WHO 'value' mezője kaotikus lehet (pl. '31.9/34.5'), ezért mindig string.
+    """
+    if key == "value":
+        return "string"
+
+    # Normál logika
+    if value is None:
+        return "string"
+
+    if isinstance(value, (int, float)):
+        return "float"
+
+    try:
+        float(value)
+        return "float"
+    except:
+        return "string"
+
+# Type mapping: Python/JSON types -> PostgreSQL types
+def map_to_postgresql_type(python_type: str) -> str:
+    """
+    Python/JSON típusok konvertálása PostgreSQL típusokká.
+    
+    Args:
+        python_type: Python/JSON típus (pl. "string", "float", "integer")
+        
+    Returns:
+        PostgreSQL típus (pl. "TEXT", "NUMERIC", "INTEGER")
+    """
+    type_mapping = {
+        "string": "TEXT",
+        "str": "TEXT",
+        "text": "TEXT",
+        "varchar": "VARCHAR(255)",
+        "integer": "INTEGER",
+        "int": "INTEGER",
+        "float": "NUMERIC",
+        "double": "NUMERIC",
+        "numeric": "NUMERIC",
+        "number": "NUMERIC",
+        "boolean": "BOOLEAN",
+        "bool": "BOOLEAN",
+        "date": "DATE",
+        "datetime": "TIMESTAMP",
+        "timestamp": "TIMESTAMP",
+        "json": "JSONB",
+        "jsonb": "JSONB",
+        "array": "JSONB",
+        "list": "JSONB",
+    }
+    
+    # Case-insensitive lookup
+    python_type_lower = python_type.lower().strip() if python_type else "string"
+    
+    # Ha már PostgreSQL típus (nagybetűvel kezdődik), akkor visszaadjuk
+    if python_type and python_type[0].isupper():
+        return python_type
+    
+    # Keresés a mapping-ben
+    return type_mapping.get(python_type_lower, "TEXT")
 
 # JSON path parser
 def extract_from_path(data, path):
@@ -56,10 +120,17 @@ def create_table(pipeline_id, **kwargs):
     print(f"\n=== [CREATE_TABLE] pipeline_id: {pipeline_id} ===")
     with engine.connect() as conn:
         query = sa.text("""
-            SELECT target_table_name, field_mappings, selected_columns, column_order, update_mode,
-                   group_by_columns, order_by_column, order_direction
-            FROM etlconfig WHERE id = :id
-        """)
+                        SELECT target_table_name,
+                               field_mappings,
+                               selected_columns,
+                               column_order,
+                               update_mode,
+                               group_by_columns,
+                               order_by_column,
+                               order_direction
+                        FROM etlconfig
+                        WHERE id = :id
+                        """)
         result = conn.execute(query, {"id": pipeline_id}).mappings().first()
         print("[CREATE_TABLE] Lekérdezett konfig:", result)
         table_name = result['target_table_name']
@@ -81,6 +152,90 @@ def create_table(pipeline_id, **kwargs):
             column_order = json.loads(column_order)
         if isinstance(group_by_columns, str):
             group_by_columns = json.loads(group_by_columns) if group_by_columns else []
+
+        # Field mappings formátum konverzió: lista -> dict (ha szükséges)
+        # Az api_schemas táblában lista formátumban van: [{"name": "country", "type": "string", ...}]
+        # De a create_table dict formátumot vár: {"country": {"type": "string", ...}}
+        if isinstance(field_mappings, list):
+            print("[CREATE_TABLE] Converting field_mappings from list to dict format")
+            field_mappings_dict = {}
+            for field in field_mappings:
+                field_name = field.get('name')
+                if field_name:
+                    # Másoljuk az összes mezőt, de a 'name' mezőt kihagyjuk
+                    field_props = {k: v for k, v in field.items() if k != 'name'}
+                    field_mappings_dict[field_name] = field_props
+            field_mappings = field_mappings_dict
+            print(f"[CREATE_TABLE] Converted field_mappings: {list(field_mappings.keys())}")
+
+        # 🔥 DYNAMIC SCHEMA DISCOVERY – ha nincs egyetlen field_mapping sem
+        # (pl. WHO dynamic mode)
+        if not field_mappings:
+            print("[CREATE_TABLE] field_mappings üres → dinamikus séma felfedezés XCom-ból")
+
+            ti = kwargs["ti"]
+
+            # Próbáljuk a legvalószínűbb XCom key-ket
+            sample_rows = (
+                    ti.xcom_pull(task_ids=f"extract_data_{pipeline_id}", key="extracted_data")
+                    or ti.xcom_pull(task_ids=f"extract_data_{pipeline_id}", key="return_value")
+            )
+
+            # Ha dict, tegyük listába
+            if isinstance(sample_rows, dict):
+                sample_rows = [sample_rows]
+
+            if not sample_rows:
+                raise Exception("Nem tudok dinamikus mezőket generálni, mert az extract_data nem adott vissza mintát!")
+
+            # Első rekordból mezőlista
+            first = sample_rows[0]
+            print("[CREATE_TABLE] Minta rekord (XCom):", first)
+
+            # Automatikus field_mappings generálás
+            auto_field_mappings = {}
+            for key, value in first.items():
+                auto_field_mappings[key] = {
+                    "type": guess_type(key, value),
+                    "split": False,
+                    "concat": {
+                        "with": "",
+                        "enabled": False,
+                        "separator": " "
+                    },
+                    "delete": False,
+                    "rename": False,
+                    "newName": "",
+                    "separator": ""
+                }
+            field_mappings = auto_field_mappings
+            print("[CREATE_TABLE] AUTO-GENERATED field_mappings kulcsok:", list(field_mappings.keys()))
+
+            # 🔥 FIX DUPLICATE id: rename WHO id -> who_id
+            if "id" in field_mappings:
+                print("[CREATE_TABLE] WHO API contains 'id' field → renaming to who_id")
+
+                # move WHO id to new key
+                field_mappings["who_id"] = field_mappings.pop("id")
+
+                # fix selected_columns (if later auto-generated or user-provided)
+                selected_columns = ["who_id" if c == "id" else c for c in selected_columns]
+
+                # fix column_order
+                column_order = ["who_id" if c == "id" else c for c in column_order]
+
+            field_mappings = auto_field_mappings
+            print("[CREATE_TABLE] AUTO-GENERATED field_mappings kulcsok:", list(field_mappings.keys()))
+
+            # Ha a user nem jelölt ki explicit selected_columns / column_order-t,
+            # akkor legyen az összes oszlop
+            if not selected_columns:
+                selected_columns = list(field_mappings.keys())
+                print("[CREATE_TABLE] selected_columns üres volt → beállítva minden mezőre:", selected_columns)
+
+            if not column_order:
+                column_order = list(field_mappings.keys())
+                print("[CREATE_TABLE] column_order üres volt → beállítva minden mezőre:", column_order)
 
         print("[CREATE_TABLE] JSON decode után:", field_mappings, selected_columns, column_order)
 
@@ -138,11 +293,24 @@ def create_table(pipeline_id, **kwargs):
         for col in final_columns:
             props = next((p for k, p in field_mappings.items()
                           if (p.get("rename") and p.get("newName") == col) or k == col), {})
-            col_type = props.get('type', 'TEXT')
+
+            # Típus meghatározása és PostgreSQL-re konvertálása
+            raw_type = props.get('type', 'string')
+            col_type = map_to_postgresql_type(raw_type)
+
             col_def = f'"{col}" {col_type}'
+
+            # NULL constraint
+            if props.get('nullable') is False:
+                col_def += " NOT NULL"
+
+            # UNIQUE constraint (upsert módban)
             if update_mode == "upsert" and props.get('unique'):
                 col_def += " UNIQUE"
+
             column_defs.append(col_def)
+            print(f"[CREATE_TABLE] Column '{col}': type={raw_type} -> {col_type}, unique={props.get('unique', False)}")
+
         print(f"[CREATE_TABLE] column_defs: {column_defs}")
 
         if not column_defs:
@@ -162,7 +330,8 @@ def create_table(pipeline_id, **kwargs):
 
         # XCom push – minden szerkezet infó, amit a transform/load taskoknak tudni kell!
         ti = kwargs['ti']
-        print("[CREATE_TABLE] XCom push: final_columns, col_rename_map, group_by_columns, order_by_column, order_direction, unique_cols")
+        print(
+            "[CREATE_TABLE] XCom push: final_columns, col_rename_map, group_by_columns, order_by_column, order_direction, unique_cols")
         ti.xcom_push(key='final_columns', value=final_columns)
         ti.xcom_push(key='col_rename_map', value=col_rename_map)
         ti.xcom_push(key='group_by_columns', value=mapped_group_by_columns)
@@ -171,39 +340,96 @@ def create_table(pipeline_id, **kwargs):
         ti.xcom_push(key='unique_cols', value=unique_cols)
         ti.xcom_push(key='field_mappings', value=field_mappings)
 
+
 # Data extraction from API
 def extract_data(pipeline_id, **kwargs):
+    """
+    Adatok kinyerése API-ból connector réteg használatával.
+    Ha van connector_type, akkor a connector-öket használja,
+    egyébként a régi módszert (backward compatibility).
+    """
+    print(f"\n=== [EXTRACT_DATA] pipeline_id: {pipeline_id} ===")
+
     with engine.connect() as conn:
-        query = sa.text("""
-            SELECT source, field_mappings
-            FROM api_schemas
-            WHERE source = (SELECT source FROM etlconfig WHERE id = :id)
-        """)
-        result = conn.execute(query, {"id": pipeline_id}).mappings().first()
+        # API Schema lekérése
+        schema_query = sa.text("""
+                               SELECT s.source,
+                                      s.field_mappings,
+                                      s.connector_type,
+                                      s.endpoint,
+                                      s.base_url
+                               FROM api_schemas s
+                               WHERE s.source = (SELECT source FROM etlconfig WHERE id = :id)
+                               """)
+        schema_result = conn.execute(schema_query, {"id": pipeline_id}).mappings().first()
 
-    if not result:
-        raise Exception(f"API schema not found for pipeline {pipeline_id}")
+        if not schema_result:
+            raise Exception(f"API schema not found for pipeline {pipeline_id}")
 
-    source_url = result['source']
-    field_mappings = result['field_mappings']
+        # Pipeline paraméterek lekérése
+        pipeline_query = sa.text("""
+                                 SELECT parameters
+                                 FROM etlconfig
+                                 WHERE id = :id
+                                 """)
+        pipeline_result = conn.execute(pipeline_query, {"id": pipeline_id}).mappings().first()
+        parameters = pipeline_result.get('parameters') if pipeline_result else None
 
-    response = requests.get(source_url)
-    if response.status_code != 200:
-        raise Exception(f"API Error: {response.status_code}")
+    source = schema_result['source']
+    field_mappings = schema_result['field_mappings']
+    connector_type = schema_result.get('connector_type')
+    endpoint = schema_result.get('endpoint', 'default')
+    base_url = schema_result.get('base_url')
 
-    data = response.json()
-    extracted = []
+    # --- CONNECTOR RÉTEG ---
+    if connector_type:
+        print(f"[EXTRACT_DATA] Using connector: {connector_type}")
+        print(f"[EXTRACT_DATA] Endpoint: {endpoint}")
+        print(f"[EXTRACT_DATA] Parameters: {parameters}")
 
-    for item in data:
-        record = {}
-        for field in field_mappings:
-            field_name = field.get('name')
-            field_path = field.get('path', field_name)
-            value = extract_from_path(item, field_path)
-            record[field_name] = value
-        extracted.append(record)
+        try:
+            extracted = fetch_data_with_connector(
+                connector_type=connector_type,
+                endpoint=endpoint,
+                parameters=parameters or {},
+                base_url=base_url,
+                field_mappings=field_mappings
+            )
+            print(f"[EXTRACT_DATA] Successfully extracted {len(extracted)} records using connector")
+        except Exception as e:
+            print(f"[EXTRACT_DATA] Error with connector: {e}")
 
-    kwargs['ti'].xcom_push(key='extracted_data', value=extracted)
+            # legacy fallback *csak* ha a source valódi URL
+            if source and (source.startswith("http://") or source.startswith("https://")):
+                print(f"[EXTRACT_DATA] Falling back to legacy method (source is URL)")
+                extracted = fetch_data_legacy(source, field_mappings)
+            else:
+                raise Exception(
+                    f"Connector '{connector_type}' failed and cannot fallback to legacy method "
+                    f"(source '{source}' is not a URL). Original error: {e}"
+                )
+
+    # --- LEGACY MÓDSZER ---
+    else:
+        print(f"[EXTRACT_DATA] Using legacy method (direct URL)")
+        print(f"[EXTRACT_DATA] Source URL: {source}")
+        extracted = fetch_data_legacy(source, field_mappings)
+
+    # ====== KULCS NORMALIZÁLÁS MINDEN ESETBEN ======
+    def normalize_keys(obj):
+        if isinstance(obj, dict):
+            return {k.lower(): normalize_keys(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [normalize_keys(v) for v in obj]
+        return obj
+
+    normalized = normalize_keys(extracted)
+
+    # ====== XCOM PUSH ======
+    kwargs['ti'].xcom_push(key='extracted_data', value=normalized)
+    print(f"[EXTRACT_DATA] Pushed {len(normalized)} normalized records to XCom")
+
+    return normalized
 
 def transform_data(pipeline_id, **kwargs):
     print(f"\n=== [TRANSFORM_DATA] pipeline_id: {pipeline_id} ===")
@@ -393,6 +619,6 @@ for pipeline in pipelines:
     )
 
     # Task dependencies
-    create_task >> extract_task >> transform_task >> load_task
+    extract_task >>create_task >> transform_task >> load_task
 
     globals()[dag_id] = dag

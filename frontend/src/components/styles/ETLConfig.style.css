@@ -238,3 +238,228 @@ button:hover {
 .drag-handle {
   cursor: grab;
 }
+
+/* API Parameters */
+.parameter-field {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+.parameter-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #333;
+}
+
+.parameter-field .required {
+  color: #dc3545;
+  margin-left: 4px;
+}
+
+.parameter-field .param-description {
+  font-weight: normal;
+  color: #666;
+  font-size: 0.9em;
+  margin-left: 8px;
+}
+
+.parameter-field input[type="text"],
+.parameter-field input[type="number"],
+.parameter-field select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.parameter-field .param-examples {
+  margin-top: 4px;
+  color: #666;
+  font-style: italic;
+}
+
+/* API Parameters */
+.parameter-field {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+.parameter-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #333;
+}
+
+.parameter-field .required {
+  color: #dc3545;
+  margin-left: 4px;
+}
+
+.parameter-field .param-description {
+  font-weight: normal;
+  color: #666;
+  font-size: 0.9em;
+  margin-left: 8px;
+}
+
+.parameter-field input[type="text"],
+.parameter-field input[type="number"],
+.parameter-field select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.parameter-field .param-examples {
+  margin-top: 4px;
+  color: #666;
+  font-style: italic;
+}
+
+/* API Parameters */
+.parameter-field {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+.parameter-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #333;
+}
+
+.parameter-field .required {
+  color: #dc3545;
+  margin-left: 4px;
+}
+
+.parameter-field .param-description {
+  font-weight: normal;
+  color: #666;
+  font-size: 0.9em;
+  margin-left: 8px;
+}
+
+.parameter-field input[type="text"],
+.parameter-field input[type="number"],
+.parameter-field select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.parameter-field .param-examples {
+  margin-top: 4px;
+  color: #666;
+  font-style: italic;
+}
+
+/* API Parameters */
+.parameter-field {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+.parameter-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #333;
+}
+
+.parameter-field .required {
+  color: #dc3545;
+  margin-left: 4px;
+}
+
+.parameter-field .param-description {
+  font-weight: normal;
+  color: #666;
+  font-size: 0.9em;
+  margin-left: 8px;
+}
+
+.parameter-field input[type="text"],
+.parameter-field input[type="number"],
+.parameter-field select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.parameter-field .param-examples {
+  margin-top: 4px;
+  color: #666;
+  font-style: italic;
+}
+
+/* API Parameters */
+.parameter-field {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+.parameter-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #333;
+}
+
+.parameter-field .required {
+  color: #dc3545;
+  margin-left: 4px;
+}
+
+.parameter-field .param-description {
+  font-weight: normal;
+  color: #666;
+  font-size: 0.9em;
+  margin-left: 8px;
+}
+
+.parameter-field input[type="text"],
+.parameter-field input[type="number"],
+.parameter-field select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.parameter-field .param-examples {
+  margin-top: 4px;
+  color: #666;
+  font-style: italic;
+}

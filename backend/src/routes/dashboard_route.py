@@ -1,12 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
 from src.models.status_model import Status
 from src.models.etl_config_model import ETLConfig
 from src.models.api_schemas_model import APISchema
-from src.schemas  import DashboardPipelineResponse
+from src.schemas import DashboardPipelineResponse
 from src.database.connection import get_db
-from src.schemas.auth_schema import TokenData
-from src.utils.auth_helper import validate_token
 import pandas as pd
 
 router = APIRouter()
@@ -14,11 +12,9 @@ router = APIRouter()
 @router.get("/dashboard", response_model=list[DashboardPipelineResponse])
 def get_dashboard(
     db: Session = Depends(get_db),
-    current_user: TokenData = Depends(validate_token)   # <-- HOZZÁADNI!
 ):
     pipelines = (
         db.query(ETLConfig)
-        .filter(ETLConfig.user_id == current_user.user_id)  # <-- FELHASZNÁLÓI SZŰRÉS!
         .outerjoin(Status, ETLConfig.id == Status.etlconfig_id)
         .outerjoin(APISchema, ETLConfig.source == APISchema.source)
         .options(joinedload(ETLConfig.schema))
