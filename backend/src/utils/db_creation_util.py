@@ -14,5 +14,9 @@ def generate_table_name(pipeline_name: str, version: int, uid: str | None = None
     return f"{pipeline_name}_v{version}_{uid}"
 
 def generate_dag_id(pipeline_name: str, version: int) -> str:
-    sanitized = pipeline_name.lower().replace(' ', '_')
+    sanitized = remove_version_suffix(pipeline_name)
+    sanitized = sanitized.lower().replace(' ', '_')
     return f"{sanitized}_v{version}"
+
+def remove_version_suffix(name: str) -> str:
+    return re.sub(r' v\d+$', '', name)

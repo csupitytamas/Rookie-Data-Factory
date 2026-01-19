@@ -14,6 +14,15 @@ export const updatePipeline = (id, payload) =>
 export const loadSchemaBySource = (source) =>
   api.post(`${prefix}/load-schema`, { source });
 
+export const getSchemaBySource = (source) =>
+  api.get(`${prefix}/schema/${source}`);
+
+export const getFriendlySchemaBySource = (source) =>
+  api.get(`${prefix}/schema/${source}/friendly`);
+
+export const getConnectorFilters = (connectorType) =>
+  api.get(`${prefix}/connector/${connectorType}/filters`);
+
 export const getAvailableSources = () =>
   api.get(`${prefix}/available-sources`);
 

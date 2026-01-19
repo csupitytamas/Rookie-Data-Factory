@@ -2,115 +2,113 @@
   <div class="container">
     <h2>Create New ETL Pipeline</h2>
 
-    <form @submit.prevent="submitPipeline" class="form-layout">
-      <div class="form-row">
-        <label for="pipelineName">Pipeline Name:</label>
-        <input v-model="pipelineName" type="text" id="pipelineName" placeholder="Enter pipeline name" required />
-      </div>
+    <div class="progress-indicator">
+      Step: {{ currentStep }} / 6
+    </div>
 
-      <div class="form-row">
-        <label for="source">Select Source:</label>
-        <select v-model="selectedSource" id="source">
-          <option disabled value="">Please select</option>
-          <option
-            v-for="item in sources"
-            :key="item.source"
-            :value="item.source"
-            :title="item.description || ''"
-          >
-            {{ item.alias || item.source }}
-          </option>
-        </select>
-      </div>
+    <div class="step-content">
+      <BasicSettings v-if="currentStep === 1" />
+      <ApiSettings v-if="currentStep === 2" />
+      <ScheduleSettings v-if="currentStep === 3" />
+      <FieldMapping v-if="currentStep === 4" />
+      <TransformSettings v-if="currentStep === 5" />
+      <SaveOptions v-if="currentStep === 6" />
+    </div>
 
-      <div class="button-row">
-        <button type="button" class="secondary" @click="openConfiguration">Configuration</button>
-        <button type="submit" class="primary">Create Pipeline</button>
-      </div>
-    </form>
+    <div class="button-row" style="margin-top: 20px;">
+      <button 
+        v-if="currentStep > 1" 
+        type="button" 
+        class="secondary" 
+        @click="currentStep--"
+      >
+        Back
+      </button>
+
+      <div v-else></div> 
+
+      <button 
+        v-if="currentStep < 6" 
+        type="button" 
+        class="primary" 
+        @click="currentStep++"
+      >
+        Next
+      </button>
+
+      <button 
+        v-if="currentStep === 6" 
+        type="button" 
+        class="primary" 
+        @click="submitPipeline"
+      >
+        Create Pipeline
+      </button>
+    </div>
   </div>
 </template>
 
 <script>
-import {createPipeline, getAvailableSources} from '@/api/pipeline'
+import { createPipeline } from '@/api/pipeline';
 import { usePipelineStore } from '@/stores/pipelineStore';
 
+import BasicSettings from './wizard/BasicSettings.vue';
+import ApiSettings from './wizard/ApiSettings.vue';
+import ScheduleSettings from './wizard/ScheduleSettings.vue';
+import FieldMapping from './wizard/FieldMapping.vue';
+import TransformSettings from './wizard/TransformSettings.vue';
+import SaveOptions from './wizard/SaveOptions.vue';
 
 export default {
+  components: {
+    BasicSettings,
+    ApiSettings,
+    ScheduleSettings,
+    FieldMapping,
+    TransformSettings,
+    SaveOptions
+  },
   data() {
     return {
-      sources: [],
+      currentStep: 1
     };
   },
   computed: {
     store() {
       return usePipelineStore();
-    },
-    pipelineName: {
-      get() {
-        return this.store.pipeline_name;
-      },
-      set(value) {
-        this.store.pipeline_name = value;
-      }
-    },
-
-    selectedSource: {
-      get() {
-        return this.store.source;
-      },
-      set(value) {
-        this.store.source = value;
-      }
     }
   },
-
-
-  mounted() {
-  this.fetchSources();
-},
-
-
   methods: {
-    async fetchSources() {
-  try {
-    const response = await getAvailableSources();
-    console.log("Sources fetched:", response.data); // <--- EZ FONTOS
-    this.sources = response.data;
-  } catch (err) {
-    console.error("Can't load the sources:", err);
-  }
-},
-
-
-submitPipeline() {
-  const payload = {
-    pipeline_name: this.pipelineName,
-    source: this.selectedSource,
-    ...this.store.config
-  };
-  console.log("Final payload:", payload);
-  createPipeline(payload)
-    .then(response => {
-      alert('Successfully created!');
-      this.$router.push('/');
-    })
-    .catch(error => {
-      alert('Error!');
-    });
-},
-
-
-    openConfiguration() {
-      this.$router.push({
-        path: "/etl-config",
-        query: {
-          pipelineName: this.pipelineName,
-          selectedSource: this.selectedSource,
-        }
-      });
+    submitPipeline() {
+      const payload = {
+        pipeline_name: this.store.pipeline_name,
+        source: this.store.source,
+        ...this.store.config
+      };
+      
+      console.log("Final payload:", payload);
+      
+      createPipeline(payload)
+        .then(response => {
+          alert('Successfully created!');
+          this.store.reset();
+          this.$router.push('/');
+        })
+        .catch(error => {
+          console.error(error);
+          alert('Error creating pipeline!');
+        });
     }
   }
 };
 </script>
+
 <style scoped src="./styles/CreateETLPipeline.style.css"></style>
+<style scoped>
+.progress-indicator {
+  text-align: center;
+  margin-bottom: 20px;
+  font-weight: bold;
+  color: #666;
+}
+</style>

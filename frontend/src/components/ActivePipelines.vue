@@ -13,7 +13,7 @@
       <tbody>
       <tr v-for="(pipeline, index) in pipelines" :key="index">
         <td>{{ pipeline.pipeline_name }}</td>
-        <td>{{ pipeline.source }}</td>
+        <td>{{ pipeline.alias || pipeline.source }}</td>
         <td>
           <button @click="configurePipeline(pipeline)">
             ⚙️
@@ -27,7 +27,6 @@
 </template>
 
 <script>
-import axios from 'axios';
 import {getAllPipelines} from "@/api/pipeline";
 export default {
   name: "ActivePipelines",

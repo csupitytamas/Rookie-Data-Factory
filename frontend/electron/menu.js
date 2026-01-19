@@ -48,13 +48,26 @@ function createMenu(mainWindow) {
             ]
         },
         {
-            label: "Settings",
-            click: () => {
-                if (mainWindow) {
-                    mainWindow.webContents.send("navigate", "/settings");
+              label: "Settings",
+              submenu: [
+                {
+                  label: "User settings",
+                  click: () => {
+                    if (mainWindow) {
+                      mainWindow.webContents.send("navigate", "/settings");
+                    }
+                  }
+                },
+                {
+                  label: "Logout",
+                  click: () => {
+                    if (mainWindow) {
+                      mainWindow.webContents.send("navigate", "/logout");
+                    }
+                  }
                 }
+              ]
             }
-        }
     ];
 
     const menu = Menu.buildFromTemplate(template);

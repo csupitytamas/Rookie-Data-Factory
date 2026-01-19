@@ -21,3 +21,5 @@ def get_next_scheduled_run(dag_id):
     if next_run_str:
         return datetime.fromisoformat(next_run_str.replace('Z', '+00:00'))  # timezone kompatibilis
     return None
+
+

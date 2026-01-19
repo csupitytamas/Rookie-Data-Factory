@@ -62,7 +62,8 @@
 
           <div v-if="colSettingsOpen[col]" class="mapping-settings">
             <label><input type="checkbox" v-model="fieldMappings[col].rename" /> Rename</label>
-            <input v-if="fieldMappings[col].rename" type="text" v-model="fieldMappings[col].newName" placeholder="New name" />
+            <input v-if="fieldMappings[col].rename" type="text" v-model="fieldMappings[col].newName" placeholder="New name" /><label>
+            <input type="checkbox" v-model="fieldMappings[col].unique" /> Unique </label>
 
             <label><input type="checkbox" v-model="fieldMappings[col].delete" /> Delete</label>
 
@@ -72,10 +73,11 @@
               <option v-for="sep in separatorOptions" :key="sep" :value="sep">{{ sep === ' ' ? 'space' : sep }}</option>
             </select>
 
-            <label><input type="checkbox" v-model="fieldMappings[col].concat.enabled" /> Concatenate</label>
+                    <label><input type="checkbox" v-model="fieldMappings[col].concat.enabled" @change="onConcatEnableChange(col)" /> Concatenate</label>
             <div v-if="fieldMappings[col].concat.enabled" class="join-options">
               <label>With column:</label>
-              <select v-model="fieldMappings[col].concat.with">
+              <select v-model="fieldMappings[col].concat.with"
+                    @change="onConcatWithChange(col, fieldMappings[col].concat.with)">
                 <option disabled value="">Please select</option>
                 <option v-for="targetCol in allColumns" :key="targetCol" :value="targetCol">
                   {{ targetCol }}
@@ -177,9 +179,18 @@
     <div class="form-group">
       <label>Save options</label>
       <select v-model="saveOption">
-        <option value="todatabase">Database</option>
-        <option value="createfile">File</option>
+        <option value="todatabase">Only database</option>
+        <option value="createfile">Create file to</option>
       </select>
+    </div>
+
+     <div class="form-group" v-if="saveOption === 'createfile'">
+    <label>File format</label>
+    <select v-model="selectedFileFormat">
+      <option v-for="fmt in fileFormats" :key="fmt.value" :value="fmt.value">
+        {{ fmt.label }}
+      </option>
+    </select>
     </div>
 
     <div class="form-group">
@@ -230,7 +241,7 @@ export default defineComponent({
 
     const fieldMappings = ref<Record<string, any>>({});
     const colSettingsOpen = ref<Record<string, boolean>>({});
-    const separatorOptions = ref([" ", ",", ";", "-", "/", ":", "_"]);
+    const separatorOptions = ref([" ", "_"]);
 
     onMounted(async () => {
       if (pipelineId) {
@@ -268,6 +279,56 @@ export default defineComponent({
       }
     });
 
+     const fileFormats = ref([
+      { value: 'csv', label: 'CSV' },
+      { value: 'json', label: 'JSON' },
+      { value: 'parquet', label: 'Parquet' },
+      { value: 'excel', label: 'Excel (XLSX)' },
+      { value: 'txt', label: 'Plain text (TXT)' },
+      { value: 'xml', label: 'XML' },
+      { value: 'yaml', label: 'YAML' }
+    ]);
+    const selectedFileFormat = ref('csv');
+
+    const onConcatWithChange = (col, targetCol) => {
+    // 1. Ha targetCol üres, csak az aktuális oszlop enabled legyen false
+    if (!targetCol) {
+      fieldMappings.value[col].concat.enabled = false;
+      return;
+    }
+
+    // 2. Mindkét oszlopon enabled = true
+    fieldMappings.value[col].concat.enabled = true;
+    fieldMappings.value[targetCol].concat.enabled = true;
+
+    // 3. Csak az aktuális oszlopnál legyen kitöltve a with
+    fieldMappings.value[targetCol].concat.with = "";
+
+    // 4. Tisztítsd a többi mezőt is, ahol visszafelé lenne ilyen with (ne legyen kölcsönös összefűzés)
+    Object.keys(fieldMappings.value).forEach(otherCol => {
+      if (
+        otherCol !== col &&
+        fieldMappings.value[otherCol].concat.with === col
+      ) {
+        fieldMappings.value[otherCol].concat.with = "";
+      }
+    });
+  };
+
+    const onConcatEnableChange = (col) => {
+      const enabled = fieldMappings.value[col].concat.enabled;
+      const withCol = fieldMappings.value[col].concat.with;
+
+  // Ha kikapcsolod a checkboxot, akkor a pair-en is disabled
+      if (!enabled) {
+        if (withCol) {
+          fieldMappings.value[withCol].concat.enabled = false;
+          fieldMappings.value[withCol].concat.with = "";
+        }
+        fieldMappings.value[col].concat.with = "";
+      }
+    };
+
     const handleFileUpload = (event: Event) => {
       const file = (event.target as HTMLInputElement).files?.[0] || null;
       if (file) {
@@ -297,20 +358,22 @@ export default defineComponent({
       try {
         const payload = {
           schedule: schedule.value,
-          custom_time: schedule.value === 'custom' ? customTime.value : null,
-          condition: conditions.value,
-          dependency_pipeline_id: conditions.value === 'withdependency' ? dependencyPipelineId.value : null,
-          uploaded_file_name: conditions.value === 'withsource' ? uploadedFileName.value : null,
-          update_mode: update.value,
-          save_option: saveOption.value,
-          field_mappings: fieldMappings.value,
-          column_order: columnOrder.value,
-          selected_columns: selectedColumns.value,
-          group_by_columns: disableGroupBy.value ? [] : groupBy.value,
-          order_by_column: disableOrderBy.value ? null : orderBy.value,
-          order_direction: disableOrderBy.value ? null : orderDirection.value,
-          custom_sql: transformation.value === 'advenced' ? customSQL.value : null,
-          transformation: { type: transformation.value }
+        custom_time: schedule.value === 'custom' ? customTime.value : null,
+        condition: conditions.value,
+        dependency_pipeline_id: conditions.value === 'withdependency' ? dependencyPipelineId.value : null,
+        uploaded_file_name: conditions.value === 'withsource' ? uploadedFileName.value : null,
+        update_mode: update.value,
+        save_option: saveOption.value,
+        field_mappings: fieldMappings.value,
+        column_order: columnOrder.value,
+        selected_columns: selectedColumns.value,
+        group_by_columns: disableGroupBy.value ? [] : groupBy.value,
+        order_by_column: disableOrderBy.value ? null : orderBy.value,
+        order_direction: disableOrderBy.value ? null : orderDirection.value,
+        custom_sql: transformation.value === 'advenced' ? customSQL.value : null,
+        file_format: saveOption.value === 'createfile' ? selectedFileFormat.value : null,
+        transformation: {
+          type: transformation.value }
         };
 
         console.log("Update payload:", payload);
@@ -350,6 +413,10 @@ export default defineComponent({
       separatorOptions,
       disableGroupBy,
       disableOrderBy,
+      fileFormats,
+      selectedFileFormat,
+      onConcatWithChange,
+      onConcatEnableChange,
       handleFileUpload,
       toggleSelectAll,
       toggleSettings,

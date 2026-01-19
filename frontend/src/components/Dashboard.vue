@@ -16,7 +16,6 @@
       </p>
       <p>Next scheduled run: <strong>{{ pipeline.nextRun }}</strong></p>
       <p>Source: <strong>{{ pipeline.alias }}</strong></p>
-
       <div class="table-preview" v-if="pipeline.sampleData && pipeline.sampleData.length > 0">
         <table>
           <thead>
@@ -31,11 +30,36 @@
           </tbody>
         </table>
         <div v-if="hasMoreRows(pipeline.sampleData)" class="table-ellipsis">
-          ...
+          <button class="ellipsis-btn" @click="openModal(pipeline)" title="Show all data">
+            ...
+          </button>
         </div>
       </div>
       <div v-else>
         <em> No data to display.</em>
+      </div>
+    </div>
+        <div v-if="showModal && modalPipeline" class="modal-overlay" @click.self="closeModal">
+      <div class="modal-content">
+        <h2>{{ modalPipeline.name }} </h2>
+        <div style="overflow-x:auto; max-height:60vh; overflow-y:auto;">
+          <table v-if="modalPipeline.sampleData && modalPipeline.sampleData.length > 0">
+            <thead>
+              <tr>
+                <th v-for="key in tableKeys(modalPipeline.sampleData[0])" :key="key">{{ key }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, idx) in modalPipeline.sampleData" :key="idx">
+                <td v-for="key in tableKeys(row)" :key="key">{{ row[key] }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else>
+            <em>No data available.</em>
+          </div>
+        </div>
+        <button class="modal-close-btn" @click="closeModal">Close</button>
       </div>
     </div>
   </div>
@@ -49,18 +73,31 @@ export default {
   name: "DashboardView",
   data() {
     return {
-      pipelines: []
+      pipelines: [],
+      showModal: false,
+      modalPipeline: null,
+      refreshIntervalId: null
     };
   },
   async mounted() {
-    try {
-      const response = await getDashboardPipelines();
-      this.pipelines = response.data;
-    } catch (err) {
-      console.error("Hiba a dashboard adatok betöltésekor:", err);
+    await this.fetchPipelines();
+    this.refreshIntervalId = setInterval(this.fetchPipelines, 5000);
+  },
+  unmounted() {
+    if (this.refreshIntervalId) {
+      clearInterval(this.refreshIntervalId);
+      this.refreshIntervalId = null;
     }
   },
   methods: {
+    async fetchPipelines() {
+      try {
+        const response = await getDashboardPipelines();
+        this.pipelines = response.data;
+      } catch (err) {
+        console.error("Hiba a dashboard adatok betöltésekor:", err);
+      }
+    },
     visibleRows(sampleData) {
       return sampleData.slice(0, MAX_ROWS);
     },
@@ -69,6 +106,14 @@ export default {
     },
     tableKeys(row) {
       return Object.keys(row).filter(k => k !== "id");
+    },
+    openModal(pipeline) {
+    this.modalPipeline = pipeline;
+    this.showModal = true;
+    },
+    closeModal() {
+      this.showModal = false;
+      this.modalPipeline = null;
     }
   }
 };
@@ -137,4 +182,58 @@ th, td {
 .status-success { color: green; }
 .status-failed { color: red; }
 .status-running { color: orange; }
+
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-content {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 48px #031a4925;
+  padding: 2em;
+  min-width: 600px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+}
+.modal-close-btn {
+  display: block;
+  margin: 1em auto 0 auto;
+  padding: 8px 24px;
+  font-size: 1.1em;
+  border-radius: 6px;
+  border: none;
+  background: #e9eff6;
+  cursor: pointer;
+  transition: background .2s;
+}
+.modal-close-btn:hover {
+  background: #b2c1da;
+}
+.ellipsis-btn {
+  background: #f3f6fb;
+  border: 1.5px solid #b2c1da;
+  border-radius: 8px;   /* lekerekített, de szögletesebb */
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #46597a;
+  padding: 4px 16px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(3, 26, 73, 0.05);
+  transition: background .18s, border-color .18s, color .18s;
+  margin: 0 auto;
+  display: inline-block;
+}
+.ellipsis-btn:hover {
+  background: #e9eff6;
+  border-color: #7a95b8;
+  color: #284363;
+}
 </style>

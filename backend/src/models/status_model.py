@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, Interval, ForeignKey, func
 from sqlalchemy.orm import relationship
 from .etl_config_model import ETLConfig   # vagy a helyes útvonalon, ha külön package!
-from . import Base
+from src.database.connection import Base
 
 class Status(Base):
     __tablename__ = 'status'

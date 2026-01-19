@@ -54,7 +54,6 @@ def update_pipeline_status():
             etlconfig.c.id,
             etlconfig.c.pipeline_name,
             etlconfig.c.dag_id
-
         )).fetchall()
 
         with AirflowSession() as airflow_session:
@@ -66,6 +65,14 @@ def update_pipeline_status():
                 pipeline_name = pipeline.pipeline_name.lower().replace(' ', '_')
                 dag_id = pipeline.dag_id
                 print(f"\n[DEBUG] Pipeline ID: {etlconfig_id}, pipeline_name (sanitized): {pipeline_name}, dag_id: {dag_id}")
+
+                # ÚJ: Ellenőrizzük az aktuális status-t
+                current_status_query = select(status.c.current_status).where(status.c.etlconfig_id == etlconfig_id)
+                current_status_value = etl_session.execute(current_status_query).scalar()
+
+                if current_status_value == "archived":
+                    print(f"[INFO] Pipeline {etlconfig_id} archivált státuszban van, kihagyva a frissítést.")
+                    continue
 
                 if dag_id not in dag_ids:
                     print(f"[WARNING] Nem található az Airflow-ban ez a DAG ID: {dag_id}")

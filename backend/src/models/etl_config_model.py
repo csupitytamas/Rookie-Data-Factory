@@ -1,11 +1,13 @@
-from sqlalchemy import Column, Integer, String, DateTime, JSON
-from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
-from . import Base
 
+from sqlalchemy import Column, Integer, String, DateTime, JSON
+from datetime import datetime
+from src.database.connection import Base
+from sqlalchemy.orm import relationship, foreign
 
 class ETLConfig(Base):
     __tablename__ = "etlconfig"
+
+
 
     id = Column(Integer, primary_key=True, index=True)
     pipeline_name = Column(String, nullable=False)
@@ -35,4 +37,17 @@ class ETLConfig(Base):
     modified_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     target_table_name = Column(String, nullable=True)
     dag_id = Column(String, nullable=True)
+    file_format = Column(String, nullable=True)
+    
+    # Connector paraméterek - ezeket a UI-ban választják ki (pl. indicator, country, stb.)
+    parameters = Column(JSON, nullable=True)  # {"indicator": "SP.POP.TOTL", "country": "USA", "year": 2020}
+
+    schema = relationship(
+        "APISchema",
+        primaryjoin="ETLConfig.source == foreign(APISchema.source)",
+        uselist=False,
+        lazy="joined"
+    )
+
+
 
