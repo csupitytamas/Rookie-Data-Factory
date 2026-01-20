@@ -1,7 +1,7 @@
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
 from datetime import datetime, timedelta
-from sync.status_sync import update_pipeline_status
+from airflow.plugins.sync.status_sync import update_pipeline_status
 
 default_args = {
     'owner': 'airflow',
@@ -16,7 +16,7 @@ dag = DAG(
     'status_sync_dag',
     default_args=default_args,
     description='Pipeline status sync from Airflow to database',
-    schedule_interval='*/15 * * * *',  # 15 percenként
+    schedule_interval='*/2 * * * *',
     start_date=datetime(2025, 6, 4),    # indulási dátum
     catchup=False,
     max_active_runs=1,
