@@ -1,4 +1,5 @@
-# etl-app
+# Rookie Data Factroy
+
 
 Frontend start:
 (Vue + Electron)
