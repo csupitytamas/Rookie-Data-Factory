@@ -20,7 +20,8 @@ class APISchemaBase(BaseModel):
 
 class SourceRequest(BaseModel):
     source: str
-
+    parameters: Optional[Dict[str, Any]] = {}
+    
 class SourceAlias(BaseModel):
     source: str
     alias: str | None = None

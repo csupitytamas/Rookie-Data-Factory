@@ -1,46 +1,32 @@
 import sqlalchemy as sa
 import os
 from connector_helper import fetch_data_with_connector, fetch_data_legacy
-# JSON path parser
-def extract_from_path(data, path):
-    print(f"[extract_from_path] START - path: {path}")
-    keys = path.split('.')
-    current = data
-    for i, key in enumerate(keys):
-        print(f"  [Level {i}] key: {key} | current type: {type(current).__name__} | value: {str(current)[:80]}")
-        if '[' in key and ']' in key:
-            key_name, idx = key[:-1].split('[')
-            print(f"    -> Array key: {key_name} | idx: {idx}")
-            current = current.get(key_name, [])
-            idx = int(idx)
-            if isinstance(current, list) and len(current) > idx:
-                current = current[idx]
-            else:
-                print("    [extract_from_path] Array index out of range or not a list, returning None.")
-                return None
-        else:
-            if isinstance(current, dict):
-                current = current.get(key, None)
-                print(f"    -> Dict get: {key} -> {str(current)[:80]}")
-            else:
-                print("    [extract_from_path] Not a dict, returning None.")
-                return None
-        if current is None:
-            print("    [extract_from_path] Current is None, returning None.")
-            return None
-    print(f"[extract_from_path] END - value: {current}")
-    return current
 
 def extract_data(pipeline_id, **kwargs):
     """
-    Adatok kinyerése API-ból connector réteg használatával.
-    Ha van connector_type, akkor a connector-öket használja,
-    egyébként a régi módszert (backward compatibility).
+    Adatok kinyerése. A parameters argumentumot használja az indikátorokhoz.
     """
-    db_url = os.getenv("DB_URL", "postgresql+psycopg2://postgres:admin123@host.docker.internal:5433/ETL")
+    print(f"[EXTRACT] Starting for Pipeline ID: {pipeline_id}")
+    
+    # Paraméterek kinyerése a DAG hívásból (op_kwargs)
+    parameters = kwargs.get('parameters', {})
+    source_type = kwargs.get('source_type')
+
+    db_url = os.getenv("DB_URL", "postgresql+psycopg2://postgres:admin123@host.docker.internal:5432/ETL")
     engine = sa.create_engine(db_url)
+    
+    # Adatbázis ellenőrzése (Schema és Config)
     with engine.connect() as conn:
-        # API Schema lekérése
+        # Ha a DAG generátor nem küldött paramétert, megpróbáljuk lekérni DB-ből
+        if not parameters:
+            print("[EXTRACT] Parameters missing from kwargs, querying DB...")
+            p_query = sa.text("SELECT parameters, source FROM etlconfig WHERE id = :id")
+            p_result = conn.execute(p_query, {"id": pipeline_id}).mappings().first()
+            if p_result:
+                parameters = p_result['parameters'] or {}
+                source_type = p_result['source']
+
+        # API Schema lekérése a connector típushoz
         schema_query = sa.text("""
                                SELECT s.source,
                                       s.field_mappings,
@@ -48,63 +34,52 @@ def extract_data(pipeline_id, **kwargs):
                                       s.endpoint,
                                       s.base_url
                                FROM api_schemas s
-                               WHERE s.source = (SELECT source FROM etlconfig WHERE id = :id)
+                               WHERE s.source = :source
                                """)
-        schema_result = conn.execute(schema_query, {"id": pipeline_id}).mappings().first()
+        # Figyelem: itt a source_type-ot használjuk a kereséshez
+        schema_result = conn.execute(schema_query, {"source": source_type}).mappings().first()
 
         if not schema_result:
-            raise Exception(f"API schema not found for pipeline {pipeline_id}")
+            print(f"[EXTRACT] ⚠️ No API Schema found for source '{source_type}'. Trying legacy mode.")
+            # Ha nincs séma, de van URL, legacy mód
+            if source_type and (source_type.startswith("http")):
+                extracted = fetch_data_legacy(source_type, [])
+                kwargs['ti'].xcom_push(key='extracted_data', value=extracted)
+                return extracted
+            raise Exception(f"No schema found for source {source_type}")
 
-        # Pipeline paraméterek lekérése
-        pipeline_query = sa.text("""
-                                 SELECT parameters
-                                 FROM etlconfig
-                                 WHERE id = :id
-                                 """)
-        pipeline_result = conn.execute(pipeline_query, {"id": pipeline_id}).mappings().first()
-        parameters = pipeline_result.get('parameters') if pipeline_result else None
-
-    source = schema_result['source']
-    field_mappings = schema_result['field_mappings']
     connector_type = schema_result.get('connector_type')
     endpoint = schema_result.get('endpoint', 'default')
     base_url = schema_result.get('base_url')
+    
+    # field_mappings betöltése a sémából (ha van)
+    field_mappings = schema_result.get('field_mappings')
+    if not isinstance(field_mappings, list):
+        field_mappings = []
 
-    # --- CONNECTOR RÉTEG ---
+    print(f"[EXTRACT] Connector: {connector_type}, Endpoint: {endpoint}")
+    print(f"[EXTRACT] Parameters: {parameters}")
+
+    # --- CONNECTOR INDÍTÁSA ---
     if connector_type:
-        print(f"[EXTRACT_DATA] Using connector: {connector_type}")
-        print(f"[EXTRACT_DATA] Endpoint: {endpoint}")
-        print(f"[EXTRACT_DATA] Parameters: {parameters}")
-
         try:
             extracted = fetch_data_with_connector(
                 connector_type=connector_type,
                 endpoint=endpoint,
-                parameters=parameters or {},
+                parameters=parameters, # <--- Itt megy be a { "indicator": "NCD_BMI_MEAN" }
                 base_url=base_url,
                 field_mappings=field_mappings
             )
-            print(f"[EXTRACT_DATA] Successfully extracted {len(extracted)} records using connector")
+            print(f"[EXTRACT] Success! Records fetched: {len(extracted)}")
         except Exception as e:
-            print(f"[EXTRACT_DATA] Error with connector: {e}")
-
-            # legacy fallback *csak* ha a source valódi URL
-            if source and (source.startswith("http://") or source.startswith("https://")):
-                print(f"[EXTRACT_DATA] Falling back to legacy method (source is URL)")
-                extracted = fetch_data_legacy(source, field_mappings)
-            else:
-                raise Exception(
-                    f"Connector '{connector_type}' failed and cannot fallback to legacy method "
-                    f"(source '{source}' is not a URL). Original error: {e}"
-                )
-
-    # --- LEGACY MÓDSZER ---
+            print(f"[EXTRACT] Connector Error: {e}")
+            raise e
     else:
-        print(f"[EXTRACT_DATA] Using legacy method (direct URL)")
-        print(f"[EXTRACT_DATA] Source URL: {source}")
-        extracted = fetch_data_legacy(source, field_mappings)
+        # Ha nincs connector típus definiálva
+        print(f"[EXTRACT] Legacy fetch: {source_type}")
+        extracted = fetch_data_legacy(source_type, field_mappings)
 
-    # ====== KULCS NORMALIZÁLÁS MINDEN ESETBEN ======
+    # Kulcsok normalizálása (kisbetűsítés)
     def normalize_keys(obj):
         if isinstance(obj, dict):
             return {k.lower(): normalize_keys(v) for k, v in obj.items()}
@@ -114,8 +89,7 @@ def extract_data(pipeline_id, **kwargs):
 
     normalized = normalize_keys(extracted)
 
-    # ====== XCOM PUSH ======
+    # XCom Push a következő lépéseknek
     kwargs['ti'].xcom_push(key='extracted_data', value=normalized)
-    print(f"[EXTRACT_DATA] Pushed {len(normalized)} normalized records to XCom")
-
+    
     return normalized

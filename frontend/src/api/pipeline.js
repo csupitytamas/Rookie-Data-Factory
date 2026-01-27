@@ -11,9 +11,12 @@ export const getAllPipelines = () =>
 export const updatePipeline = (id, payload) =>
   api.post(`${prefix}/updated_pipeline/${id}`, payload);
 
-export const loadSchemaBySource = (source) =>
-  api.post(`${prefix}/load-schema`, { source });
-
+export const loadSchemaBySource = (payload) => {
+  const data = typeof payload === 'string' 
+    ? { source: payload, parameters: {} } 
+    : payload;
+ return api.post(`${prefix}/load-schema`, data);
+};
 export const getSchemaBySource = (source) =>
   api.get(`${prefix}/schema/${source}`);
 
