@@ -64,6 +64,7 @@ const toggleSettings = (col: string) => {
 };
 
 onMounted(async () => {
+  // Ha már vannak betöltött oszlopok, ne töltsük újra
   if (store.config.column_order && store.config.column_order.length > 0) {
       return; 
   }
@@ -71,7 +72,15 @@ onMounted(async () => {
   if (store.source) {
     loading.value = true;
     try {
-      const resp = await loadSchemaBySource(store.source);
+      // 🟢 FRISSÍTÉS: Itt állítjuk össze a teljes payloadot
+      const payload = {
+        source: store.source,
+        parameters: store.config.parameters || {} // Itt van a választott indikátor!
+      };
+
+      console.log("Loading schema with payload:", payload);
+
+      const resp = await loadSchemaBySource(payload);
       const schema = resp.data.field_mappings || [];
       
       const allCols = schema.map((f: any) => f.name);

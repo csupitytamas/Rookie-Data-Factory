@@ -1,5 +1,5 @@
 {
-  "name": "etl-app",
+  "name": "Rookie Data Factory",
   "private": true,
   "version": "0.0.1",
   "main": "electron/main.js",
