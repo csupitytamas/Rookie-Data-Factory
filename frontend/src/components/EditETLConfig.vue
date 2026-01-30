@@ -1,387 +1,190 @@
 <template>
-  <div class="config-container">
-    <h2>Configuration</h2>
+  <div class="config-container wizard-container">
+    <h2>Edit Pipeline Configuration</h2>
 
-    <!-- Ütemezés -->
-    <div class="form-group">
-      <label>Schedule</label>
-      <select v-model="schedule">
-        <option value="daily">daily</option>
-        <option value="hourly">hourly</option>
-        <option value="minutes">minutes</option>
-        <option value="custom">custom</option>
-      </select>
-      <div v-if="schedule === 'custom'" class="custom-time-wrapper">
-        <input type="time" v-model="customTime" />
-      </div>
-    </div>
-
-    <!-- Futtatási feltételek -->
-  <div class="form-group">
-      <label>Running conditions</label>
-      <select v-model="conditions">
-        <option value="none">None</option>
-        <option value="withsource">With different source</option>
-        <option value="withdependency">Wait for another pipeline</option>
-      </select>
-    </div>
-
-    <!-- Dependency selection -->
-    <div class="form-group" v-if="conditions === 'withdependency'">
-      <label>Select dependency pipeline</label>
-      <select v-model="dependencyPipelineId">
-        <option value="">None</option>
-        <option v-for="pipeline in activePipelines" :key="pipeline.id" :value="pipeline.id">
-          {{ pipeline.name }}
-        </option>
-      </select>
-    </div>
-
-    <div class="form-group" v-if="conditions === 'withsource'">
-      <label>Own Source feltöltés:</label>
-      <div class="custom-file-input">
-        <label for="fileUpload" class="upload-label">
-          {{ uploadedFileName || "Click to upload file" }}
-        </label>
-        <input id="fileUpload" type="file" @change="handleFileUpload" />
-      </div>
-    </div>
-
-    <!-- Field Mapping  -->
-  <div class="form-group">
-    <label>Field Mapping</label>
-    <draggable v-model="columnOrder" item-key="col" class="draggable-list">
-      <template #item="{ element: col, index }">
-        <div class="mapping-row">
-          <div class="mapping-header">
-            <span class="drag-handle">☰</span>
-            <span class="column-index">{{ index + 1 }}.</span>
-            <span class="column-name">{{ col }}</span>
-            <button class="settings-button" @click="toggleSettings(col)">⚙️</button>
-          </div>
-
-          <div v-if="colSettingsOpen[col]" class="mapping-settings">
-            <label><input type="checkbox" v-model="fieldMappings[col].rename" /> Rename</label>
-            <input v-if="fieldMappings[col].rename" type="text" v-model="fieldMappings[col].newName" placeholder="New name" /><label>
-            <input type="checkbox" v-model="fieldMappings[col].unique" /> Unique </label>
-
-            <label><input type="checkbox" v-model="fieldMappings[col].delete" /> Delete</label>
-
-             <label><input type="checkbox" v-model="fieldMappings[col].split" /> Split</label>
-            <select v-if="fieldMappings[col].split" v-model="fieldMappings[col].separator">
-              <option disabled value="">Please select</option>
-              <option v-for="sep in separatorOptions" :key="sep" :value="sep">{{ sep === ' ' ? 'space' : sep }}</option>
-            </select>
-
-                    <label><input type="checkbox" v-model="fieldMappings[col].concat.enabled" @change="onConcatEnableChange(col)" /> Concatenate</label>
-            <div v-if="fieldMappings[col].concat.enabled" class="join-options">
-              <label>With column:</label>
-              <select v-model="fieldMappings[col].concat.with"
-                    @change="onConcatWithChange(col, fieldMappings[col].concat.with)">
-                <option disabled value="">Please select</option>
-                <option v-for="targetCol in allColumns" :key="targetCol" :value="targetCol">
-                  {{ targetCol }}
-                </option>
-              </select>
-
-              <label>Separator:</label>
-              <select v-model="fieldMappings[col].concat.separator">
-                <option disabled value="">Please select</option>
-                <option v-for="sep in separatorOptions" :key="sep" :value="sep">{{ sep === ' ' ? 'space' : sep }}</option>
-              </select>
-            </div>
-          </div>
+    <div class="wizard-header-custom">
+      <div 
+        v-for="(step, index) in steps" 
+        :key="index"
+        class="step-item"
+        :class="{ 
+          'active': currentStep === index + 1, 
+          'completed': currentStep > index + 1 
+        }"
+      >
+        <div class="step-circle">
+          <span v-if="currentStep > index + 1">✓</span>
+          <span v-else>{{ index + 1 }}</span>
         </div>
-      </template>
-    </draggable>
-  </div>
+        
+        <div class="step-label">{{ step }}</div>
 
-    <!-- Transformation -->
-    <div class="form-group">
-      <label>Transformation on the dataset</label>
-      <select v-model="transformation">
-        <option value="none">None</option>
-        <option value="select">Select</option>
-        <option value="advenced">Advanced</option>
-      </select>
+        <div class="step-line" v-if="index < steps.length - 1"></div>
+      </div>
+    </div>
+    <div class="wizard-content">
+      <keep-alive>
+        <component :is="currentStepComponent" />
+      </keep-alive>
     </div>
 
-    <!-- Select + GroupBy + OrderBy -->
-    <div v-if="transformation === 'select'" class="form-group">
-      <label>Select columns</label>
-      <button class="small-button" @click="toggleSelectAll">
-        {{ selectedColumns.length === allColumns.length ? 'Unselect all' : 'Select all' }}
+    <div class="wizard-footer">
+      <button 
+        v-if="currentStep > 1" 
+        @click="prevStep" 
+        class="btn-secondary"
+      >
+        Back
+      </button>
+      
+      <div class="spacer"></div>
+
+      <button 
+        v-if="currentStep < steps.length" 
+        @click="nextStep" 
+        class="btn-primary"
+      >
+        Next
       </button>
 
-      <div class="grid-checkboxes">
-        <label v-for="col in allColumns" :key="col">
-          <input type="checkbox" :value="col" v-model="selectedColumns" />
-          {{ col }}
-        </label>
-      </div>
-
-      <!-- GROUP BY -->
-      <div class="form-group" v-if="selectedColumns.length">
-        <label>Group by</label>
-        <div class="none-option">
-          <input type="checkbox" id="disableGroupBy" v-model="disableGroupBy" />
-          <label for="disableGroupBy">None</label>
-        </div>
-        <div v-if="!disableGroupBy" class="grid-checkboxes">
-          <label v-for="col in selectedColumns" :key="'g-' + col">
-            <input type="checkbox" :value="col" v-model="groupBy" />
-            {{ col }}
-          </label>
-        </div>
-      </div>
-
-      <!-- ORDER BY -->
-      <div class="form-group" v-if="selectedColumns.length">
-        <label>Order by</label>
-        <div class="none-option">
-          <input type="checkbox" id="disableOrderBy" v-model="disableOrderBy" />
-          <label for="disableOrderBy">None</label>
-        </div>
-        <div v-if="!disableOrderBy">
-          <select v-model="orderBy" class="standard-select">
-            <option disabled value="">-- Select column --</option>
-            <option v-for="col in selectedColumns" :key="'o-' + col" :value="col">{{ col }}</option>
-          </select>
-
-          <div v-if="orderBy" style="margin-top: 10px;">
-            <label>Order direction</label>
-            <div class="order-direction-container">
-              <label><input type="radio" value="asc" v-model="orderDirection" /> Ascending</label>
-              <label><input type="radio" value="desc" v-model="orderDirection" /> Descending</label>
-            </div>
-          </div>
-        </div>
-      </div>
+      <button 
+        v-if="currentStep === steps.length" 
+        @click="submitChanges" 
+        class="btn-success"
+      >
+        Save Changes
+      </button>
     </div>
 
-    <!-- Advanced (SQL) -->
-    <div class="form-group" v-if="transformation === 'advenced'">
-      <label>Custom SQL query</label>
-      <textarea v-model="customSQL" placeholder="Pl. SELECT name, COUNT(*) FROM table GROUP BY name"></textarea>
-    </div>
-
-    <!-- Update mód -->
-    <div class="form-group">
-      <label>Dataset update</label>
-      <select v-model="update">
-        <option value="overwrite">Overwrite</option>
-        <option value="append">Append</option>
-        <option value="upsert">Upsert (Update and append)</option>
-      </select>
-    </div>
-
-    <!-- Mentés mód -->
-    <div class="form-group">
-      <label>Save options</label>
-      <select v-model="saveOption">
-        <option value="todatabase">Only database</option>
-        <option value="createfile">Create file to</option>
-      </select>
-    </div>
-
-     <div class="form-group" v-if="saveOption === 'createfile'">
-    <label>File format</label>
-    <select v-model="selectedFileFormat">
-      <option v-for="fmt in fileFormats" :key="fmt.value" :value="fmt.value">
-        {{ fmt.label }}
-      </option>
-    </select>
-    </div>
-
-    <div class="form-group">
-      <button @click="submitPipelineConfig">Save</button>
-      <button @click="$router.go(-1)">Back</button>
-    </div>
   </div>
 </template>
 
-
-<script lang="ts">
-import draggable from 'vuedraggable';
-import { defineComponent, onMounted, ref } from 'vue';
+<script>
+import { defineComponent, ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePipelineStore } from '@/stores/pipelineStore';
 import { loadPipelineData, updatePipeline } from '@/api/pipeline';
 
+// A közös wizard komponensek importálása
+// (A BasicSettings és ApiSettings szándékosan hiányzik, hogy ne lehessen elrontani a forrást)
+import FieldMapping from './wizard/FieldMapping.vue';
+import TransformSettings from './wizard/TransformSettings.vue';
+import ScheduleSettings from './wizard/ScheduleSettings.vue';
+import SaveOptions from './wizard/SaveOptions.vue';
+
 export default defineComponent({
   name: 'EditorETLConfig',
-  components: { draggable },
+  components: {
+    FieldMapping,
+    TransformSettings,
+    ScheduleSettings,
+    SaveOptions
+  },
   setup() {
     const store = usePipelineStore();
-    const router = useRouter();
     const route = useRoute();
-
+    const router = useRouter();
     const pipelineId = route.query.id;
 
-    const schedule = ref('daily');
-    const customTime = ref('');
-    const conditions = ref('none');
-    const dependencyPipelineId = ref('');
-    const update = ref('append');
-    const saveOption = ref('todatabase');
-    const uploadedFileName = ref('');
-    const fileData = ref<File | null>(null);
+    // --- LÉPÉSEK DEFINIÁLÁSA (4 Lépés) ---
+    // Sorrend: Mapping -> Transform -> Schedule -> Output
+    const currentStep = ref(1);
+    const steps = ['Mapping', 'Transform', 'Schedule', 'Output'];
+    const componentList = ['FieldMapping', 'TransformSettings', 'ScheduleSettings', 'SaveOptions'];
 
-    const activePipelines = ref([]);
-    const allColumns = ref<string[]>([]);
-    const columnOrder = ref<string[]>([]);
-    const selectedColumns = ref<string[]>([]);
-    const groupBy = ref<string[]>([]);
-    const orderBy = ref('');
-    const orderDirection = ref('asc');
-    const customSQL = ref('');
-    const transformation = ref('none');
-    const disableGroupBy = ref(false);
-    const disableOrderBy = ref(false);
+    const currentStepComponent = computed(() => {
+      return componentList[currentStep.value - 1];
+    });
 
-    const fieldMappings = ref<Record<string, any>>({});
-    const colSettingsOpen = ref<Record<string, boolean>>({});
-    const separatorOptions = ref([" ", "_"]);
+    const nextStep = () => { if (currentStep.value < steps.length) currentStep.value++; };
+    const prevStep = () => { if (currentStep.value > 1) currentStep.value--; };
 
+    // --- ADATBETÖLTÉS ÉS MIGRÁCIÓ ---
     onMounted(async () => {
-      if (pipelineId) {
-        try {
-          const response = await loadPipelineData(pipelineId);
-          const pipeline = response.data;
-
-          store.config = { ...pipeline };
-
-          schedule.value = pipeline.schedule || 'daily';
-          customTime.value = pipeline.custom_time || '';
-          conditions.value = pipeline.condition || 'none';
-          dependencyPipelineId.value = pipeline.dependency_pipeline_id || '';
-          update.value = pipeline.update_mode || 'append';
-          saveOption.value = pipeline.save_option || 'todatabase';
-          uploadedFileName.value = pipeline.uploaded_file_name || '';
-
-          columnOrder.value = pipeline.column_order || [];
-          selectedColumns.value = pipeline.selected_columns || [];
-          groupBy.value = pipeline.group_by_columns || [];
-          orderBy.value = pipeline.order_by_column || '';
-          orderDirection.value = pipeline.order_direction || 'asc';
-          customSQL.value = pipeline.custom_sql || '';
-
-          if (pipeline.transformation) {
-            transformation.value = pipeline.transformation.type;
-          }
-
-          fieldMappings.value = pipeline.field_mappings || {};
-          allColumns.value = Object.keys(fieldMappings.value);
-
-        } catch (err) {
-          console.error("Failed to load:", err);
-        }
-      }
-    });
-
-     const fileFormats = ref([
-      { value: 'csv', label: 'CSV' },
-      { value: 'json', label: 'JSON' },
-      { value: 'parquet', label: 'Parquet' },
-      { value: 'excel', label: 'Excel (XLSX)' },
-      { value: 'txt', label: 'Plain text (TXT)' },
-      { value: 'xml', label: 'XML' },
-      { value: 'yaml', label: 'YAML' }
-    ]);
-    const selectedFileFormat = ref('csv');
-
-    const onConcatWithChange = (col, targetCol) => {
-    // 1. Ha targetCol üres, csak az aktuális oszlop enabled legyen false
-    if (!targetCol) {
-      fieldMappings.value[col].concat.enabled = false;
-      return;
-    }
-
-    // 2. Mindkét oszlopon enabled = true
-    fieldMappings.value[col].concat.enabled = true;
-    fieldMappings.value[targetCol].concat.enabled = true;
-
-    // 3. Csak az aktuális oszlopnál legyen kitöltve a with
-    fieldMappings.value[targetCol].concat.with = "";
-
-    // 4. Tisztítsd a többi mezőt is, ahol visszafelé lenne ilyen with (ne legyen kölcsönös összefűzés)
-    Object.keys(fieldMappings.value).forEach(otherCol => {
-      if (
-        otherCol !== col &&
-        fieldMappings.value[otherCol].concat.with === col
-      ) {
-        fieldMappings.value[otherCol].concat.with = "";
-      }
-    });
-  };
-
-    const onConcatEnableChange = (col) => {
-      const enabled = fieldMappings.value[col].concat.enabled;
-      const withCol = fieldMappings.value[col].concat.with;
-
-  // Ha kikapcsolod a checkboxot, akkor a pair-en is disabled
-      if (!enabled) {
-        if (withCol) {
-          fieldMappings.value[withCol].concat.enabled = false;
-          fieldMappings.value[withCol].concat.with = "";
-        }
-        fieldMappings.value[col].concat.with = "";
-      }
-    };
-
-    const handleFileUpload = (event: Event) => {
-      const file = (event.target as HTMLInputElement).files?.[0] || null;
-      if (file) {
-        uploadedFileName.value = file.name;
-        fileData.value = file;
-      }
-    };
-
-    const toggleSelectAll = () => {
-      if (selectedColumns.value.length === allColumns.value.length) {
-        selectedColumns.value = [];
-      } else {
-        selectedColumns.value = [...allColumns.value];
-      }
-    };
-
-    const toggleSettings = (col: string) => {
-      colSettingsOpen.value[col] = !colSettingsOpen.value[col];
-    };
-
-    const submitPipelineConfig = async () => {
-      if (!pipelineId) {
-        alert('Missing pipeline ID for update.');
-        return;
-      }
+      if (!pipelineId) return;
 
       try {
+        const response = await loadPipelineData(pipelineId);
+        const pipeline = response.data;
+
+        // 1. MIGRÁCIÓS LOGIKA (DIM1 -> DIMONE)
+        // Ezt itt kell elvégezni, mielőtt betöltjük a Store-ba, 
+        // hogy a FieldMapping komponens már a jó adatokat lássa.
+        const mappings = pipeline.field_mappings || {};
+        let order = pipeline.column_order || [];
+        let selected = pipeline.selected_columns || [];
+        let groups = pipeline.group_by_columns || [];
+
+        if (mappings['dim1']) {
+          console.log("Migrating dim1 to DIMONE in Editor...");
+          mappings['DIMONE'] = { 
+            ...mappings['dim1'], 
+            rename: false, // Az új API-ban már eleve ez a neve
+            newName: '' 
+          };
+          delete mappings['dim1'];
+
+          // Listák frissítése
+          const replaceItem = (arr, oldVal, newVal) => {
+            const idx = arr.indexOf(oldVal);
+            if (idx !== -1) arr[idx] = newVal;
+          };
+
+          replaceItem(order, 'dim1', 'DIMONE');
+          replaceItem(selected, 'dim1', 'DIMONE');
+          replaceItem(groups, 'dim1', 'DIMONE');
+
+          if (pipeline.order_by_column === 'dim1') {
+            pipeline.order_by_column = 'DIMONE';
+          }
+        }
+
+        // 2. ADATOK BETÖLTÉSE A STORE-BA
+        // A wizard komponensek innen fogják olvasni az adatokat
+        store.$patch({
+          pipeline_name: pipeline.pipeline_name, // Csak megjelenítéshez, szerkeszteni nem engedjük
+          source: pipeline.source,               // Csak megjelenítéshez
+          config: {
+            schedule: pipeline.schedule,
+            custom_time: pipeline.custom_time,
+            condition: pipeline.condition,
+            dependency_pipeline_id: pipeline.dependency_pipeline_id,
+            uploaded_file_name: pipeline.uploaded_file_name,
+            update_mode: pipeline.update_mode,
+            save_option: pipeline.save_option,
+            field_mappings: mappings,
+            column_order: order,
+            selected_columns: selected,
+            group_by_columns: groups,
+            order_by_column: pipeline.order_by_column,
+            order_direction: pipeline.order_direction,
+            custom_sql: pipeline.custom_sql,
+            file_format: pipeline.file_format,
+            transformation: pipeline.transformation || { type: 'none' }
+          }
+        });
+
+      } catch (err) {
+        console.error("Failed to load pipeline data:", err);
+        alert("Hiba a pipeline betöltésekor!");
+      }
+    });
+
+    // --- MENTÉS ---
+    const submitChanges = async () => {
+      try {
+        // Összeállítjuk a payloadot a Store-ból
+        // Figyelem: A pipeline_name és source nem változik, de a config igen
         const payload = {
-          schedule: schedule.value,
-        custom_time: schedule.value === 'custom' ? customTime.value : null,
-        condition: conditions.value,
-        dependency_pipeline_id: conditions.value === 'withdependency' ? dependencyPipelineId.value : null,
-        uploaded_file_name: conditions.value === 'withsource' ? uploadedFileName.value : null,
-        update_mode: update.value,
-        save_option: saveOption.value,
-        field_mappings: fieldMappings.value,
-        column_order: columnOrder.value,
-        selected_columns: selectedColumns.value,
-        group_by_columns: disableGroupBy.value ? [] : groupBy.value,
-        order_by_column: disableOrderBy.value ? null : orderBy.value,
-        order_direction: disableOrderBy.value ? null : orderDirection.value,
-        custom_sql: transformation.value === 'advenced' ? customSQL.value : null,
-        file_format: saveOption.value === 'createfile' ? selectedFileFormat.value : null,
-        transformation: {
-          type: transformation.value }
+          ...store.config
         };
 
-        console.log("Update payload:", payload);
+        console.log("Updating pipeline with payload:", payload);
 
         await updatePipeline(pipelineId, payload);
 
         alert('Pipeline updated successfully!');
-        router.push('/'); // Visszairányít pl. a Dashboard-ra
+        router.push('/'); 
       } catch (err) {
         console.error("Error updating pipeline:", err);
         alert('Failed to update pipeline!');
@@ -389,40 +192,119 @@ export default defineComponent({
     };
 
     return {
-      store,
-      router,
-      schedule,
-      customTime,
-      conditions,
-      dependencyPipelineId,
-      update,
-      saveOption,
-      uploadedFileName,
-      fileData,
-      activePipelines,
-      allColumns,
-      columnOrder,
-      selectedColumns,
-      groupBy,
-      orderBy,
-      orderDirection,
-      customSQL,
-      transformation,
-      fieldMappings,
-      colSettingsOpen,
-      separatorOptions,
-      disableGroupBy,
-      disableOrderBy,
-      fileFormats,
-      selectedFileFormat,
-      onConcatWithChange,
-      onConcatEnableChange,
-      handleFileUpload,
-      toggleSelectAll,
-      toggleSettings,
-      submitPipelineConfig
+      currentStep,
+      steps,
+      currentStepComponent,
+      nextStep,
+      prevStep,
+      submitChanges
     };
   }
 });
 </script>
-<style scoped src="./styles/ETLConfig.style.css"></style>
+
+<style scoped>
+/* WIZARD CONTAINER (A dobozos kinézetért) */
+.wizard-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  background: #fff;
+  padding: 30px;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* ================= HEADER STÍLUS (A KÉP ALAPJÁN) ================= */
+.wizard-header-custom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 40px;
+  padding: 0 10px;
+}
+
+.step-item {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+/* Az utolsó elemnél ne nyúljon tovább a div */
+.step-item:last-child {
+  flex: 0;
+}
+
+.step-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #e0e0e0;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+  margin-right: 10px;
+  transition: background-color 0.3s ease;
+}
+
+.step-label {
+  color: #999;
+  font-weight: 500;
+  font-size: 14px; 
+  margin-right: 15px;
+  white-space: nowrap;
+}
+
+.step-line {
+  flex: 1;
+  height: 2px;
+  background-color: #e0e0e0;
+  margin-right: 15px;
+}
+
+/* AKTÍV LÉPÉS (Jelenlegi - KÉK) */
+.step-item.active .step-circle {
+  background-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
+}
+.step-item.active .step-label {
+  color: #000;
+  font-weight: bold;
+}
+
+/* BEFEJEZETT LÉPÉS (Már kész - ZÖLD) */
+.step-item.completed .step-circle {
+  background-color: #28a745;
+}
+.step-item.completed .step-label {
+  color: #28a745;
+}
+.step-item.completed .step-line {
+  background-color: #28a745; 
+}
+
+/* TARTALOM */
+.wizard-content {
+  min-height: 300px;
+  margin-bottom: 20px;
+}
+
+/* GOMBOK */
+.wizard-footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+}
+
+.btn-primary { background: #007bff; color: white; padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+.btn-secondary { background: #6c757d; color: white; padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+.btn-success { background: #28a745; color: white; padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+.btn-primary:hover { background: #0056b3; }
+.btn-success:hover { background: #218838; }
+.spacer { flex: 1; }
+</style>

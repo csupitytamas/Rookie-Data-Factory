@@ -5,7 +5,7 @@ from datetime import datetime
 
 AIRFLOW_API_URL = "http://airflow-webserver:8080/api/v1"
 USERNAME = "airflow"
-PASSWORD = "modmq888"
+PASSWORD = "airflow"
 
 def get_next_scheduled_run(dag_id):
     url = f"{AIRFLOW_API_URL}/dags/{dag_id}"

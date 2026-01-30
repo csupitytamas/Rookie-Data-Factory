@@ -1,7 +1,7 @@
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
 from datetime import datetime, timedelta
-from airflow.plugins.sync.status_sync import update_pipeline_status
+from sync.status_sync import update_pipeline_status
 
 default_args = {
     'owner': 'airflow',

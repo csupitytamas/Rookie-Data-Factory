@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger("airflow.task")
 
 # Adatbázis kapcsolat
-db_url = os.getenv("DB_URL", "postgresql+psycopg2://postgres:admin123@host.docker.internal:5432/ETL")
+db_url = os.getenv("DB_URL", "postgresql+psycopg2://postgres:admin123@host.docker.internal:5433/ETL")
 engine = sa.create_engine(db_url)
 
 default_args = {
@@ -99,12 +99,12 @@ try:
 
             dag = DAG(
                 dag_id=dag_id,
-                description=f"ETL for {pipeline['pipeline_name']}",
+                description=f"JOB for {pipeline['pipeline_name']}",
                 default_args=default_args,
                 schedule_interval=schedule_interval,
                 start_date=datetime(2025, 1, 1),
                 catchup=False,
-                tags=['etl', pipeline.get('source', 'unknown')]
+                tags=['JOB', pipeline.get('source', 'unknown')]
             )
 
             # Konvertáljuk dict-é, hogy módosítható legyen

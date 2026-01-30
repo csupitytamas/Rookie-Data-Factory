@@ -12,7 +12,7 @@ def extract_data(pipeline_id, **kwargs):
     parameters = kwargs.get('parameters', {})
     source_type = kwargs.get('source_type')
 
-    db_url = os.getenv("DB_URL", "postgresql+psycopg2://postgres:admin123@host.docker.internal:5432/ETL")
+    db_url = os.getenv("DB_URL", "postgresql+psycopg2://postgres:admin123@host.docker.internal:5433/ETL")
     engine = sa.create_engine(db_url)
     
     # Adatbázis ellenőrzése (Schema és Config)
