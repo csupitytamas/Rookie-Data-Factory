@@ -11,6 +11,10 @@ from src.utils.db_creation_util import generate_table_name, generate_dag_id, rem
 from src.constans.accepted_fields import ACCEPTED_ETL_FIELDS
 from src.common.airflow_client import pause_airflow_dag, unpause_airflow_dag
 from datetime import datetime
+import shutil
+import os
+import pandas as pd
+from fastapi import UploadFile, File
 
 
 router = APIRouter()
@@ -134,3 +138,38 @@ def updated_pipeline(
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Pipeline update failed: {str(e)}")
+    
+@router.post("/upload-extra-file")
+async def upload_extra_file(file: UploadFile = File(...)):
+    # 1. Fizikai mentés a Backend gépén (Host)
+    upload_dir = "shared_uploads" 
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    physical_path = os.path.join(upload_dir, file.filename)
+    
+    try:
+        with open(physical_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Oszlopok beolvasása (ellenőrzéshez)
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext == '.csv':
+            df = pd.read_csv(physical_path, nrows=1)
+        elif ext == '.json':
+            df = pd.read_json(physical_path).head(1)
+        elif ext == '.parquet':
+            df = pd.read_parquet(physical_path).head(1)
+        else:
+            return {"error": "Unsupported format"}
+            
+        # 2. Docker-kompatibilis útvonal visszaadása az Airflow számára
+        # Fontos: Ez a belső útvonal, amit a Docker konténer lát!
+        airflow_path = f"/opt/backend/src/shared_uploads/{file.filename}"
+
+        return {
+            "message": "Sikeres feltöltés",
+            "file_path": airflow_path, 
+            "columns": df.columns.tolist()
+        }
+    except Exception as e:
+        return {"error": str(e)}

@@ -31,3 +31,10 @@ export const getAvailableSources = () =>
 
 export const loadPipelineData = (id) =>
   api.post(`${prefix}/load/${id}`);
+
+export const uploadExtraFile = (formData) =>
+  api.post(`${prefix}/upload-extra-file`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
