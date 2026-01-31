@@ -64,7 +64,7 @@ const toggleSettings = (col: string) => {
 };
 
 onMounted(async () => {
-  // Ha már vannak betöltött oszlopok, ne töltsük újra
+  // If columns are already loaded (e.g. navigating back and forth), don't reload
   if (store.config.column_order && store.config.column_order.length > 0) {
       return; 
   }
@@ -72,22 +72,31 @@ onMounted(async () => {
   if (store.source) {
     loading.value = true;
     try {
-      // 🟢 FRISSÍTÉS: Itt állítjuk össze a teljes payloadot
       const payload = {
         source: store.source,
-        parameters: store.config.parameters || {} // Itt van a választott indikátor!
+        parameters: store.config.parameters || {} 
       };
 
       console.log("Loading schema with payload:", payload);
 
+      // 1. Fetch API Columns
       const resp = await loadSchemaBySource(payload);
-      const schema = resp.data.field_mappings || [];
+      const apiCols = (resp.data.field_mappings || []).map((f: any) => f.name);
       
-      const allCols = schema.map((f: any) => f.name);
+      // 2. Get File Columns (from Step 3 upload)
+      // We default to an empty array if no file was uploaded
+      const fileCols = store.config.parameters.extra_file_columns || [];
+      
+      console.log(`API Columns: ${apiCols.length}, File Columns: ${fileCols.length}`);
+
+      // 3. Merge Columns (Unique Set to handle potential duplicates)
+      // This ensures we see ALL available fields from both sources
+      const allCols = [...new Set([...apiCols, ...fileCols])];
       
       store.config.column_order = [...allCols];
       store.config.selected_columns = [...allCols];
       
+      // 4. Initialize Mappings
       const mappings: any = {};
       allCols.forEach((c: string) => {
         mappings[c] = {

@@ -175,7 +175,7 @@ th, td {
 
 .table-ellipsis {
   text-align: center;
-  font-size: 3rem;
+  font-size: 0.5rem;
   color: #031a49;
   font-weight: bold;
 }
@@ -221,7 +221,7 @@ th, td {
   background: #f3f6fb;
   border: 1.5px solid #b2c1da;
   border-radius: 8px;   /* lekerekített, de szögletesebb */
-  font-size: 1.5rem;
+  font-size: 1rem;
   font-weight: bold;
   color: #46597a;
   padding: 4px 16px;
