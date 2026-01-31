@@ -12,6 +12,7 @@ airflow_engine = create_engine(AIRFLOW_DB_URL)
 AirflowSession = sessionmaker(bind=airflow_engine)
 
 
+
 ETL_DB_URL = "postgresql+psycopg2://postgres:admin123@host.docker.internal:5433/ETL"
 etl_engine = create_engine(ETL_DB_URL)
 ETLSession = sessionmaker(bind=etl_engine)
