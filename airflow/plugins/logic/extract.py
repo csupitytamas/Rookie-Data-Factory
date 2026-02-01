@@ -5,11 +5,12 @@ from connector_helper import fetch_data_with_connector, fetch_data_legacy
 
 def extract_data(pipeline_id, **kwargs):
     """
-    Adatok kinyerése. Kezeli az API-t és a kiegészítő fájlokat (Merge/Concat).
+    Adatok kinyerése. Kezeli az API-t és a kiegészítő fájlokat.
+    NINCS kisbetűsítés: az oszlopnevek maradnak eredeti formájukban.
     """
     print(f"[EXTRACT] Starting for Pipeline ID: {pipeline_id}")
     
-    # Paraméterek kinyerése a DAG hívásból (op_kwargs)
+    # Paraméterek kinyerése
     parameters = kwargs.get('parameters', {})
     source_type = kwargs.get('source_type')
 
@@ -18,7 +19,6 @@ def extract_data(pipeline_id, **kwargs):
     
     # 1. PARAMÉTEREK ÉS SÉMA BETÖLTÉSE
     with engine.connect() as conn:
-        # Ha a DAG generátor nem küldött paramétert, megpróbáljuk lekérni DB-ből
         if not parameters:
             print("[EXTRACT] Parameters missing from kwargs, querying DB...")
             p_query = sa.text("SELECT parameters, source FROM etlconfig WHERE id = :id")
@@ -27,7 +27,6 @@ def extract_data(pipeline_id, **kwargs):
                 parameters = p_result['parameters'] or {}
                 source_type = p_result['source']
 
-        # API Schema lekérése a connector típushoz
         schema_query = sa.text("""
                                SELECT s.source,
                                       s.field_mappings,
@@ -41,7 +40,6 @@ def extract_data(pipeline_id, **kwargs):
 
         if not schema_result:
             print(f"[EXTRACT] ⚠️ No API Schema found for source '{source_type}'. Trying legacy mode.")
-            # Ha nincs séma, de van URL, legacy mód
             if source_type and (source_type.startswith("http")):
                 extracted = fetch_data_legacy(source_type, [])
                 kwargs['ti'].xcom_push(key='extracted_data', value=extracted)
@@ -52,12 +50,9 @@ def extract_data(pipeline_id, **kwargs):
     endpoint = schema_result.get('endpoint', 'default')
     base_url = schema_result.get('base_url')
     
-    field_mappings = schema_result.get('field_mappings')
-    if not isinstance(field_mappings, list):
-        field_mappings = []
+    field_mappings = schema_result.get('field_mappings') or []
 
     print(f"[EXTRACT] Connector: {connector_type}, Endpoint: {endpoint}")
-    print(f"[EXTRACT] Parameters: {parameters}")
 
     # 2. API ADATOK LEKÉRÉSE
     extracted = []
@@ -73,8 +68,6 @@ def extract_data(pipeline_id, **kwargs):
             print(f"[EXTRACT] API fetch success! Records: {len(extracted)}")
         except Exception as e:
             print(f"[EXTRACT] Connector Error: {e}")
-            # Hiba esetén döntés: megálljunk vagy engedjük tovább csak a fájllal?
-            # Jelenleg tovább engedjük üres listával, ha a fájl miatt jöttünk
             if not parameters.get('extra_file_path'):
                  raise e
             print("[EXTRACT] Continuing with potential file data despite API error.")
@@ -82,17 +75,18 @@ def extract_data(pipeline_id, **kwargs):
         print(f"[EXTRACT] Legacy fetch: {source_type}")
         extracted = fetch_data_legacy(source_type, field_mappings)
 
-    # 3. KIEGÉSZÍTŐ FÁJL KEZELÉSE ÉS ÖSSZEFÉSÜLÉS (SMART MERGE)
+    # 3. KIEGÉSZÍTŐ FÁJL KEZELÉSE (CASE-SENSITIVE MÓD)
     extra_file_path = parameters.get('extra_file_path')
     
     if extra_file_path and os.path.exists(extra_file_path):
         print(f"[MERGE] Processing extra file: {extra_file_path}")
         
         try:
-            # Pandas DataFrames létrehozása az API adatokból
+            # A) API DataFrame
             api_df = pd.DataFrame(extracted)
+            # ITT TÖRTÉNT A VÁLTOZÁS: Kivettük a .str.lower() hívást
             
-            # Fájl beolvasása kiterjesztés alapján
+            # B) File DataFrame
             ext = os.path.splitext(extra_file_path)[1].lower()
             file_df = pd.DataFrame()
             
@@ -101,29 +95,33 @@ def extract_data(pipeline_id, **kwargs):
             elif ext == '.parquet': file_df = pd.read_parquet(extra_file_path)
 
             if not file_df.empty:
-                # Van közös oszlop?
-                common_cols = list(set(api_df.columns) & set(file_df.columns))
-                
-                # Kulcs prioritási lista (hogy ne véletlenszerűen válasszon, ha több van)
-                preferred_keys = ['id', 'uuid', 'code', 'iso_code', 'date', 'year', 'country_code']
-                join_key = next((c for c in preferred_keys if c in common_cols), common_cols[0] if common_cols else None)
+                # ITT IS: Kivettük a .str.lower() hívást - maradnak az eredeti nevek (pl. DIMONE)
 
-                if join_key:
-                    # ESET A: OUTER JOIN (Van közös kulcs)
-                    # Adatgazdagítás: sorok egyesítése + új sorok felvétele
-                    # how='outer': Minden adat megmarad mindkét forrásból
-                    print(f"[MERGE] Strategy: Outer Join on key '{join_key}'")
-                    merged_df = pd.merge(api_df, file_df, on=join_key, how='outer')
+                # --- DINAMIKUS JOIN LOGIKA ---
+                api_cols = set(api_df.columns)
+                file_cols = set(file_df.columns)
+                
+                # Csak a PONTOSAN egyező nevű oszlopokat tekinti közösnek
+                common_cols = list(api_cols.intersection(file_cols))
+                
+                if common_cols:
+                    print(f"[MERGE] Common columns found (Exact match): {common_cols}. Performing Outer Join.")
+                    
+                    # Típusbiztosítás (string) a pontos illesztéshez
+                    for col in common_cols:
+                        api_df[col] = api_df[col].astype(str).str.strip()
+                        file_df[col] = file_df[col].astype(str).str.strip()
+                    
+                    merged_df = pd.merge(api_df, file_df, on=common_cols, how='outer')
+                
                 else:
-                    # ESET B: CONCAT (Nincs közös kulcs)
-                    # Adatok hozzáadása: sorok egymás alá fűzése, oszlopok bővítése
-                    print(f"[MERGE] Strategy: Concat (No common key found)")
+                    # Ha nincs pontos egyezés, Concat
+                    print(f"[MERGE] No common columns (Exact match). Appending rows (Concat).")
                     merged_df = pd.concat([api_df, file_df], ignore_index=True)
 
-                # NaN értékek cseréje None-ra (JSON kompatibilitás miatt fontos)
+                # Output tisztítás: NaN -> None
                 merged_df = merged_df.where(pd.notnull(merged_df), None)
                 
-                # Eredmény visszaírása az extracted változóba
                 extracted = merged_df.to_dict(orient='records')
                 print(f"[MERGE] Success. Final record count: {len(extracted)}")
             else:
@@ -131,22 +129,13 @@ def extract_data(pipeline_id, **kwargs):
 
         except Exception as e:
             print(f"[MERGE ERROR] Failed to merge file: {e}")
-            # Hiba esetén nem állítjuk meg a folyamatot, marad az eredeti API adat
             pass
+            
     elif extra_file_path:
-        print(f"[MERGE] Warning: File path found in params but file does not exist: {extra_file_path}")
+        print(f"[MERGE] Warning: File path found but file does not exist: {extra_file_path}")
 
-    # 4. NORMALIZÁLÁS ÉS OUTPUT
-    def normalize_keys(obj):
-        if isinstance(obj, dict):
-            return {k.lower(): normalize_keys(v) for k, v in obj.items()}
-        if isinstance(obj, list):
-            return [normalize_keys(v) for v in obj]
-        return obj
-
-    normalized = normalize_keys(extracted)
-
-    # XCom Push a következő lépéseknek (Transform/Load)
-    kwargs['ti'].xcom_push(key='extracted_data', value=normalized)
+    # 4. OUTPUT (NORMALIZÁLÁS NÉLKÜL)
+    # A normalize_keys függvényt töröltük, hogy a kimenetben is megmaradjon a nagybetű (DIMONE)
     
-    return normalized
+    kwargs['ti'].xcom_push(key='extracted_data', value=extracted)
+    return extracted

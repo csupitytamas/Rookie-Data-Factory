@@ -39,24 +39,27 @@
         <em> No data to display.</em>
       </div>
     </div>
-        <div v-if="showModal && modalPipeline" class="modal-overlay" @click.self="closeModal">
+
+    <div v-if="showModal && modalPipeline" class="modal-overlay" @click.self="closeModal">
       <div class="modal-content">
-        <h2>{{ modalPipeline.name }} </h2>
+        <h2>{{ modalPipeline.name }}</h2>
+        
         <div style="overflow-x:auto; max-height:60vh; overflow-y:auto;">
-          <table v-if="modalPipeline.sampleData && modalPipeline.sampleData.length > 0">
+          <table v-if="modalData && modalData.length > 0">
             <thead>
               <tr>
-                <th v-for="key in tableKeys(modalPipeline.sampleData[0])" :key="key">{{ key }}</th>
+                <th v-for="key in tableKeys(modalData[0])" :key="key">{{ key }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(row, idx) in modalPipeline.sampleData" :key="idx">
+              <tr v-for="(row, idx) in modalData" :key="idx">
                 <td v-for="key in tableKeys(row)" :key="key">{{ row[key] }}</td>
               </tr>
             </tbody>
           </table>
           <div v-else>
-            <em>No data available.</em>
+            <em v-if="!modalData">Loading...</em>
+            <em v-else>No data available.</em>
           </div>
         </div>
         <button class="modal-close-btn" @click="closeModal">Close</button>
@@ -66,7 +69,9 @@
 </template>
 
 <script>
-import { getDashboardPipelines } from "@/api/dashboard";
+// 🟢 JAVÍTÁS: Importáljuk a getPipelineData-t
+import { getDashboardPipelines, getPipelineData } from "@/api/dashboard";
+
 const MAX_ROWS = 10;
 
 export default {
@@ -76,6 +81,7 @@ export default {
       pipelines: [],
       showModal: false,
       modalPipeline: null,
+      modalData: [], // Itt tároljuk a teljes adatot
       refreshIntervalId: null
     };
   },
@@ -105,22 +111,38 @@ export default {
       return sampleData.length > MAX_ROWS;
     },
     tableKeys(row) {
+      if (!row) return [];
       return Object.keys(row).filter(k => k !== "id");
     },
-    openModal(pipeline) {
-    this.modalPipeline = pipeline;
-    this.showModal = true;
+    
+    // 🟢 MÓDOSÍTOTT OPENMODAL
+    async openModal(pipeline) {
+      this.modalPipeline = pipeline;
+      this.showModal = true;
+      this.modalData = null; // Töröljük, hogy látszódjon a töltés
+
+      try {
+        // Lekérjük a teljes adatot a backendről
+        const response = await getPipelineData(pipeline.id);
+        
+        // 🚀 Object.freeze: Kötelező 25k sornál, különben a böngésző megáll
+        this.modalData = Object.freeze(response.data.data);
+      } catch (err) {
+        console.error("Hiba:", err);
+        this.modalData = [];
+      }
     },
+    
     closeModal() {
       this.showModal = false;
       this.modalPipeline = null;
+      this.modalData = [];
     }
   }
 };
 </script>
 
 <style scoped>
-
 .pipeline {
   background: linear-gradient(135deg, #f8fafc 0%, #e9eff6 100%);
   margin: 32px 0;
@@ -220,7 +242,7 @@ th, td {
 .ellipsis-btn {
   background: #f3f6fb;
   border: 1.5px solid #b2c1da;
-  border-radius: 8px;   /* lekerekített, de szögletesebb */
+  border-radius: 8px;
   font-size: 1rem;
   font-weight: bold;
   color: #46597a;

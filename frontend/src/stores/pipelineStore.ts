@@ -18,7 +18,7 @@ export interface ConfigData {
   update_mode: string;
   save_option: string;
   file_format?: string | null;
-  parameters?: Record<string, any>; // Connector paraméterek (pl. {"indicator": "SP.POP.TOTL", "country": "USA"})
+  parameters?: Record<string, any>; 
 }
 
 const DEFAULT_CONFIG: ConfigData = {
@@ -56,6 +56,44 @@ export const usePipelineStore = defineStore('pipeline', {
       this.pipeline_name = ''
       this.source = ''
       this.config = this.defaultConfig()
+    },
+    
+    // --- ÚJ FÜGGVÉNY: Egy adott lépés adatainak törlése ---
+    clearStepData(step: number) {
+      console.log(`Clearing data for step ${step}...`);
+      
+      // Step 2: API Paraméterek
+      if (step === 2) {
+        this.config.parameters = {};
+      }
+      // Step 3: Ütemezés
+      else if (step === 3) {
+        this.config.schedule = 'daily';
+        this.config.custom_time = null;
+        this.config.condition = null;
+        this.config.dependency_pipeline_id = null;
+      }
+      // Step 4: Mapping és Fájl
+      else if (step === 4) {
+        this.config.field_mappings = {};
+        this.config.selected_columns = [];
+        this.config.column_order = [];
+        this.config.uploaded_file_path = null;
+        this.config.uploaded_file_name = null;
+      }
+      // Step 5: Transzformáció
+      else if (step === 5) {
+        this.config.transformation = {};
+        this.config.group_by_columns = [];
+        this.config.order_by_column = null;
+        this.config.order_direction = null;
+        this.config.custom_sql = null;
+      }
+      // Step 6: Mentés
+      else if (step === 6) {
+        this.config.update_mode = 'append';
+        this.config.save_option = 'todatabase';
+      }
     }
   }
 })

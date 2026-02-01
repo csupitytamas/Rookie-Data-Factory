@@ -1,13 +1,15 @@
 import sqlalchemy as sa
 import pandas as pd
 import os
+import json
 from transforms.data_load import load_overwrite, load_append, load_upsert
 from transforms.exporter import export_data
+
 def load_data(pipeline_id, **kwargs):
     print(f"\n=== [LOAD_DATA] pipeline_id: {pipeline_id} ===")
     ti = kwargs['ti']
     data = ti.xcom_pull(key='final_data', task_ids=f"transform_data_{pipeline_id}")
-    print(f"[LOAD_DATA] final_data (sample): {data[:2]}")
+    print(f"[LOAD_DATA] final_data (sample): {data[:2] if data else 'None'}")
 
     if not data:
         print("[LOAD_DATA] ERROR: No data to load!")
@@ -20,14 +22,36 @@ def load_data(pipeline_id, **kwargs):
         raise Exception("Nincs final_columns XCom-ban! Ellenőrizd a create_table-t.")
 
     allowed_columns = set(final_columns)
-    filtered_data = [{k: v for k, v in row.items() if k in allowed_columns} for row in data]
-    print(f"[LOAD_DATA] filtered_data (sample): {filtered_data[:2]}")
+    
+    # --- JAVÍTOTT RÉSZ ---
+    filtered_data = []
+    for row in data:
+        new_row = {}
+        for k, v in row.items():
+            if k in allowed_columns:
+                # Ha az érték dictionary vagy lista, akkor stringesítjük (JSON)
+                if isinstance(v, (dict, list)):
+                    try:
+                        new_row[k] = json.dumps(v)
+                    except (TypeError, ValueError):
+                        new_row[k] = str(v)
+                else:
+                    new_row[k] = v
+        filtered_data.append(new_row)
+    
+    # ❌ A HIBÁS SOR INNEN TÖRÖLVE LETT! 
+    # (Korábban itt volt egy sor, ami felülírta a filtered_data-t)
+    
+    print(f"[LOAD_DATA] filtered_data (sample after fix): {filtered_data[:2]}")
+    
     db_url = os.getenv("DB_URL", "postgresql+psycopg2://postgres:admin123@host.docker.internal:5433/ETL")
     engine = sa.create_engine(db_url)
+    
     with engine.connect() as conn:
         query = sa.text("SELECT target_table_name, update_mode, file_format, save_option FROM etlconfig WHERE id = :id")
         result = conn.execute(query, {"id": pipeline_id}).mappings().first()
         print(f"[LOAD_DATA] etlconfig row: {result}")
+        
         table_name = result['target_table_name']
         update_mode = result['update_mode']
         file_format = result['file_format']

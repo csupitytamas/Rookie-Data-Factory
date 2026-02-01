@@ -142,7 +142,14 @@ def updated_pipeline(
 @router.post("/upload-extra-file")
 async def upload_extra_file(file: UploadFile = File(...)):
     # 1. Fizikai mentés a Backend gépén (Host)
-    upload_dir = "shared_uploads" 
+    # JAVÍTÁS: A 'src' mappán belüli 'shared_uploads' mappát célozzuk meg
+    # Így az Airflow is látni fogja, mert a docker-compose a 'src'-t csatolja be.
+    
+    # Megkeressük a 'src' mappa abszolút útvonalát a jelenlegi fájlhoz képest
+    current_dir = os.path.dirname(os.path.abspath(__file__)) # .../backend/src/routes
+    src_dir = os.path.dirname(current_dir)                   # .../backend/src
+    upload_dir = os.path.join(src_dir, "shared_uploads")     # .../backend/src/shared_uploads
+    
     os.makedirs(upload_dir, exist_ok=True)
     
     physical_path = os.path.join(upload_dir, file.filename)
@@ -163,7 +170,7 @@ async def upload_extra_file(file: UploadFile = File(...)):
             return {"error": "Unsupported format"}
             
         # 2. Docker-kompatibilis útvonal visszaadása az Airflow számára
-        # Fontos: Ez a belső útvonal, amit a Docker konténer lát!
+        # Mivel az Airflow a 'backend/src' mappát látja '/opt/backend/src'-ként:
         airflow_path = f"/opt/backend/src/shared_uploads/{file.filename}"
 
         return {
