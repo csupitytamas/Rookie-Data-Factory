@@ -10,9 +10,8 @@ import pandas as pd
 router = APIRouter()
 
 @router.get("/dashboard", response_model=list[DashboardPipelineResponse])
-def get_dashboard(
-    db: Session = Depends(get_db),
-):
+def get_dashboard(db: Session = Depends(get_db)):
+    # Dashboard preview: marad a 11 soros limit a gyorsaságért
     pipelines = (
         db.query(ETLConfig)
         .outerjoin(Status, ETLConfig.id == Status.etlconfig_id)
@@ -26,8 +25,10 @@ def get_dashboard(
         sample_data = []
         if pipeline.target_table_name:
             try:
-                sql = f"SELECT * FROM {pipeline.target_table_name}"
+                # Preview: LIMIT 11
+                sql = f'SELECT * FROM "{pipeline.target_table_name}" LIMIT 11'
                 df = pd.read_sql(sql, db.bind)
+                df = df.astype(object).where(pd.notnull(df), None)
                 sample_data = df.to_dict(orient="records")
             except Exception:
                 sample_data = []
@@ -45,3 +46,23 @@ def get_dashboard(
             "sampleData": sample_data
         })
     return result
+
+# 🟢 TISZTA ROUTE: Csak a teljes tábla lekérdezése
+@router.get("/dashboard/pipeline/{pipeline_id}/data")
+def get_pipeline_full_data(pipeline_id: int, db: Session = Depends(get_db)):
+    pipeline = db.query(ETLConfig).filter(ETLConfig.id == pipeline_id).first()
+    
+    if not pipeline or not pipeline.target_table_name:
+        return {"data": []}
+
+    try:
+        # NINCS LIMIT, NINCS FELTÉTEL: SELECT * FROM ...
+        query = f'SELECT * FROM "{pipeline.target_table_name}"'
+        df = pd.read_sql(query, db.bind)
+        
+        # JSON kompatibilitás miatt a NaN-okat kiszedjük
+        df = df.astype(object).where(pd.notnull(df), None)
+        return {"data": df.to_dict(orient="records")}
+    except Exception as e:
+        print(f"Error: {e}")
+        return {"data": []}

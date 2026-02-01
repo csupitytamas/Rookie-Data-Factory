@@ -1,6 +1,6 @@
 <template>
   <div class="container">
-    <h2>Create New ETL Pipeline</h2>
+    <h2>NEW JOB</h2>
 
     <div class="progress-indicator">
       Step: {{ currentStep }} / 6
@@ -20,7 +20,7 @@
         v-if="currentStep > 1" 
         type="button" 
         class="secondary" 
-        @click="currentStep--"
+        @click="handleBack"
       >
         Back
       </button>
@@ -79,6 +79,18 @@ export default {
     }
   },
   methods: {
+    // --- ÚJ METÓDUS: Visszalépés törléssel ---
+    handleBack() {
+      // Töröljük a JELENLEGI lépés adatait, mert elhagyjuk "visszafelé"
+      // Pl. Ha a 2. lépésnél vagyunk és visszamegyünk az 1-esre, 
+      // akkor a 2-es (API paraméterek) törlődnek.
+      this.store.clearStepData(this.currentStep);
+      
+      // Ezután lépünk vissza
+      this.currentStep--;
+    },
+    // -----------------------------------------
+
     submitPipeline() {
       const payload = {
         pipeline_name: this.store.pipeline_name,
