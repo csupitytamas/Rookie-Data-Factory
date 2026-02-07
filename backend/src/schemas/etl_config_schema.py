@@ -12,7 +12,7 @@ class ETLConfigBase(BaseModel):
 
     uploaded_file_path: Optional[str] = None
     uploaded_file_name: Optional[str] = None
-    dependency_pipeline_id: Optional[str] = None
+    dependency_pipeline_id: Optional[int] = None
 
     field_mappings: Optional[Dict[str, Any]] = None
     transformation: Optional[Dict[str, Any]] = None

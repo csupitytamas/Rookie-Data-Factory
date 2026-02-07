@@ -1,12 +1,6 @@
 <template>
   <div class="form-layout">
     <h3>Save Options</h3>
-
-    <div class="form-row">
-      <label>Target Table Name (Postgres):</label>
-      <input v-model="store.config.target_table_name" type="text" placeholder="e.g. my_new_table" required />
-    </div>
-
     <div class="form-row">
       <label>Update Mode:</label>
       <select v-model="store.config.update_mode">

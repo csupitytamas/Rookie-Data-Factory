@@ -38,3 +38,4 @@ export const uploadExtraFile = (formData) =>
       'Content-Type': 'multipart/form-data'
     }
   });
+export const getPipelineColumns = (id) => api.get(`${prefix}/${id}/columns`);
