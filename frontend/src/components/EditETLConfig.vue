@@ -145,6 +145,7 @@ export default defineComponent({
           pipeline_name: pipeline.pipeline_name, // Csak megjelenítéshez, szerkeszteni nem engedjük
           source: pipeline.source,               // Csak megjelenítéshez
           config: {
+            source_config: pipeline.source_config,
             schedule: pipeline.schedule,
             custom_time: pipeline.custom_time,
             condition: pipeline.condition,

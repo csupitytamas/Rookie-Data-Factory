@@ -99,6 +99,14 @@ def updated_pipeline(
 
     try:
         updated_data = config.dict(exclude_unset=True)
+        
+        # --- EZ A JAVÍTÁS: Töröljük a felesleges kulcsokat ---
+        # Ez megvédi a szervert attól, ha a frontend túl sok adatot küld
+        keys_to_remove = ["pipeline_name", "version", "target_table_name", "dag_id"]
+        for key in keys_to_remove:
+            updated_data.pop(key, None)
+        # -----------------------------------------------------
+
         updated_data['source'] = old_pipeline.source
         new_version = old_pipeline.version + 1
 
@@ -131,8 +139,14 @@ def updated_pipeline(
         )
         db.add(new_status)
         db.commit()
-        pause_airflow_dag(old_pipeline.dag_id)
-        unpause_airflow_dag(new_pipeline.dag_id)
+        
+        # Hibakezelés a DAG leállításához/indításához, hogy ne omoljon össze a mentés
+        try:
+            pause_airflow_dag(old_pipeline.dag_id)
+            unpause_airflow_dag(new_pipeline.dag_id)
+        except Exception as e:
+            print(f"[WARNING] DAG pause/unpause failed: {e}")
+
         return new_pipeline
 
     except SQLAlchemyError as e:

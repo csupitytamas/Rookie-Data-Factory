@@ -12,7 +12,6 @@
     </div>
 
     <div v-if="transformationType === 'select'" class="settings-box">
-      
       <div class="form-row">
         <label>Select Columns to Include:</label>
         <div class="checkbox-group">
@@ -20,7 +19,6 @@
             <button type="button" @click="selectAll" class="link-btn">Select All</button>
             <button type="button" @click="deselectAll" class="link-btn">Deselect All</button>
           </div>
-
           <label 
             v-for="col in availableColumns" 
             :key="col" 
@@ -88,13 +86,24 @@
     <div v-if="transformationType === 'advenced'" class="settings-box">
       <h4>Custom SQL Query</h4>
       <div class="form-row">
-        <p class="hint">Write a SQL query to filter or transform data (e.g., SELECT * FROM data WHERE value > 100).</p>
-        <textarea 
-          v-model="store.config.custom_sql" 
-          rows="6" 
-          placeholder="SELECT * FROM data WHERE..."
-          class="sql-input"
-        ></textarea>
+        <p class="hint">
+          Write a SQL query to filter or transform data. 
+          Use <b>input_data</b> as the table name.
+          <br>
+          <i>Example: SELECT country, count(*) FROM input_data GROUP BY country</i>
+        </p>
+        
+        <div class="editor-container">
+          <Codemirror
+            v-model="store.config.custom_sql"
+            placeholder="SELECT * FROM input_data WHERE..."
+            :style="{ height: '200px' }"
+            :autofocus="true"
+            :indent-with-tab="true"
+            :tab-size="2"
+            :extensions="extensions"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -104,20 +113,24 @@
 import { ref, watch, computed, onMounted } from 'vue';
 import { usePipelineStore } from '@/stores/pipelineStore';
 
+// --- JAVÍTOTT IMPORT: Csak a 'vue-codemirror'-t használjuk, a 6-os szám nélkül ---
+import { Codemirror } from 'vue-codemirror';
+import { sql } from '@codemirror/lang-sql';
+import { oneDark } from '@codemirror/theme-one-dark'; 
+
 const store = usePipelineStore();
 
-// Az elérhető oszlopok a Mapping lépésből
+// CodeMirror kiegészítők
+const extensions = [sql(), oneDark];
+
 const availableColumns = computed(() => store.config.column_order || []);
 
-// Helper: Ellenőrzi, hogy egy oszlop ki van-e választva
 const isSelected = (col: string) => {
   return store.config.selected_columns.includes(col);
 };
 
-// Kezdeti állapot beállítása
 const getInitialType = () => {
   if (store.config.custom_sql) return 'advenced';
-  // Ha van bármilyen beállítás, ami Select-re utal
   if (
     (store.config.group_by_columns && store.config.group_by_columns.length > 0) || 
     store.config.order_by_column ||
@@ -130,7 +143,6 @@ const getInitialType = () => {
 
 const transformationType = ref(getInitialType());
 
-// Helper gombok
 const selectAll = () => {
   store.config.selected_columns = [...availableColumns.value];
 };
@@ -139,28 +151,28 @@ const deselectAll = () => {
   store.config.selected_columns = [];
 };
 
-// Inicializálás mountkor: Ha a selected_columns üres, akkor minden legyen kiválasztva alapból
 onMounted(() => {
   if (!store.config.selected_columns || store.config.selected_columns.length === 0) {
     store.config.selected_columns = [...availableColumns.value];
   }
 });
 
-// Figyeljük a változást
 watch(transformationType, (newVal) => {
+ if (!store.config.transformation) {
+    store.config.transformation = {};
+  }
+  store.config.transformation.type = newVal;
   if (newVal === 'none') {
     store.config.custom_sql = null;
     store.config.group_by_columns = [];
     store.config.order_by_column = null;
     store.config.order_direction = 'asc';
-    // None esetén mindent kiválasztunk, hogy ne vesszen el adat
     store.config.selected_columns = [...availableColumns.value];
   } 
   else if (newVal === 'select') {
     store.config.custom_sql = null;
     if (!store.config.group_by_columns) store.config.group_by_columns = [];
     if (!store.config.order_direction) store.config.order_direction = 'asc';
-    // Ha üres lenne, feltöltjük
     if (store.config.selected_columns.length === 0) {
        store.config.selected_columns = [...availableColumns.value];
     }
@@ -168,21 +180,18 @@ watch(transformationType, (newVal) => {
   else if (newVal === 'advenced') {
     store.config.group_by_columns = [];
     store.config.order_by_column = null;
-    // Advanced módban az SQL dönt, de a biztonság kedvéért resetelhetjük
     store.config.selected_columns = [];
   }
 });
 
-// Extra logika: Ha kiveszünk egy oszlopot a selected-ből, vegyük ki a group_by-ból is
 watch(() => store.config.selected_columns, (newSelected) => {
   if (store.config.group_by_columns.length > 0) {
-     store.config.group_by_columns = store.config.group_by_columns.filter(col => newSelected.includes(col));
+     store.config.group_by_columns = store.config.group_by_columns.filter((col: string) => newSelected.includes(col));
   }
   if (store.config.order_by_column && !newSelected.includes(store.config.order_by_column)) {
      store.config.order_by_column = null;
   }
 }, { deep: true });
-
 </script>
 
 <style scoped src="../styles/CreateETLPipeline.style.css"></style>
@@ -207,7 +216,7 @@ h4 {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 200px; /* Magasabb lett */
+  max-height: 200px;
   overflow-y: auto;
   padding: 10px;
   background: white;
@@ -266,18 +275,19 @@ h4 {
   margin-top: 5px;
 }
 
-.sql-input {
-  width: 100%;
-  padding: 10px;
-  border-radius: 4px;
+.editor-container {
   border: 1px solid #ccc;
-  font-family: monospace;
-  font-size: 14px;
+  border-radius: 4px;
+  overflow: hidden; 
 }
 
 .hint {
   font-size: 0.85em;
   color: #666;
   margin-bottom: 8px;
+  background-color: #eef;
+  padding: 8px;
+  border-radius: 4px;
+  border-left: 3px solid #007bff;
 }
 </style>
