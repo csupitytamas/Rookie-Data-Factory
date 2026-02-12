@@ -50,7 +50,7 @@ import { loadSchemaBySource } from '@/api/pipeline';
 
 const store = usePipelineStore();
 const loading = ref(false);
-const settingsOpen = ref({});
+const settingsOpen = ref<Record<string, boolean>>({});
 
 const getMapping = (col: string) => {
   if (!store.config.field_mappings[col]) {
@@ -64,56 +64,64 @@ const toggleSettings = (col: string) => {
 };
 
 onMounted(async () => {
-  // If columns are already loaded (e.g. navigating back and forth), don't reload
+  // Ha már be vannak töltve az oszlopok, nem töltjük újra
   if (store.config.column_order && store.config.column_order.length > 0) {
       return; 
   }
 
-  if (store.source) {
-    loading.value = true;
-    try {
-      const payload = {
-        source: store.source,
-        parameters: store.config.parameters || {} 
-      };
-
-      console.log("Loading schema with payload:", payload);
-
-      // 1. Fetch API Columns
-      const resp = await loadSchemaBySource(payload);
-      const apiCols = (resp.data.field_mappings || []).map((f: any) => f.name);
+  loading.value = true;
+  try {
+      // 1. API Oszlopok (Csak akkor kérjük le, ha nem "Pipeline" a forrás és van beállítva source)
+      let apiCols: string[] = [];
+      if (store.source && store.source !== 'Pipeline') {
+        try {
+          const payload = {
+            source: store.source,
+            parameters: store.config.parameters || {} 
+          };
+          console.log("Loading API schema...");
+          const resp = await loadSchemaBySource(payload);
+          apiCols = (resp.data.field_mappings || []).map((f: any) => f.name);
+        } catch (e) {
+          console.warn("API schema load skipped or failed (might be normal if using Dependency only):", e);
+        }
+      }
       
-      // 2. Get File Columns (from Step 3 upload)
-      // We default to an empty array if no file was uploaded
-      const fileCols = store.config.parameters.extra_file_columns || [];
+      // 2. Fájl Oszlopok (A store-ból olvassuk)
+      const fileCols = store.config.parameters?.extra_file_columns || [];
       
-      console.log(`API Columns: ${apiCols.length}, File Columns: ${fileCols.length}`);
+      // 3. DEPENDENCY Oszlopok (EZ HIÁNYZOTT!)
+      // A BasicSettings.vue már elmentette ide őket, most kiolvassuk.
+      const depCols = store.config.parameters?.dependency_columns || [];
+      
+      console.log(`API Cols: ${apiCols.length}, File Cols: ${fileCols.length}, Dep Cols: ${depCols.length}`);
 
-      // 3. Merge Columns (Unique Set to handle potential duplicates)
-      // This ensures we see ALL available fields from both sources
-      const allCols = [...new Set([...apiCols, ...fileCols])];
+      // 4. Összefésülés (Duplikációk szűrése)
+      const allCols = [...new Set([...apiCols, ...fileCols, ...depCols])];
       
+      // Store frissítése
       store.config.column_order = [...allCols];
       store.config.selected_columns = [...allCols];
       
-      // 4. Initialize Mappings
-      const mappings: any = {};
+      // Mappings inicializálása
+      const mappings: any = store.config.field_mappings || {};
       allCols.forEach((c: string) => {
-        mappings[c] = {
-          rename: false,
-          newName: "",
-          delete: false,
-          unique: false,
-          concat: { enabled: false, with: "", separator: " " }
-        };
+        if (!mappings[c]) {
+          mappings[c] = {
+            rename: false,
+            newName: "",
+            delete: false,
+            unique: false,
+            concat: { enabled: false, with: "", separator: " " }
+          };
+        }
       });
       store.config.field_mappings = mappings;
 
-    } catch (e) {
-      console.error("Schema load error:", e);
-    } finally {
-      loading.value = false;
-    }
+  } catch (e) {
+    console.error("Schema load error:", e);
+  } finally {
+    loading.value = false;
   }
 });
 </script>

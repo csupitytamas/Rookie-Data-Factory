@@ -38,3 +38,9 @@ export const uploadExtraFile = (formData) =>
       'Content-Type': 'multipart/form-data'
     }
   });
+export const getPipelineColumns = (id) => api.get(`${prefix}/${id}/columns`);
+export const getPipelineLog = (pipelineId, runId) =>
+  api.get(`${prefix}/logs/${pipelineId}/${runId}`);
+
+export const getPipelineHistory = () =>
+  api.get(`${prefix}/history`);

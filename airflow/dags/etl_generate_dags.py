@@ -37,8 +37,9 @@ def create_dag_structure(dag, pipeline_data):
         python_callable=extract_data,
         op_kwargs={
             'pipeline_id': pipeline_data['id'],
-            'parameters': params,  # <--- Ez a kulcs a WHO indikátorhoz!
-            'source_type': pipeline_data.get('source')
+            'parameters': params,
+            'source_type': pipeline_data.get('source'),
+            'dependency_id': pipeline_data.get('dependency_pipeline_id') 
         },
         dag=dag,
     )

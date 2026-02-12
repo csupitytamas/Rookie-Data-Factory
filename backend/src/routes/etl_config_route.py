@@ -15,7 +15,7 @@ import shutil
 import os
 import pandas as pd
 from fastapi import UploadFile, File
-
+from sqlalchemy import inspect
 
 router = APIRouter()
 
@@ -99,6 +99,14 @@ def updated_pipeline(
 
     try:
         updated_data = config.dict(exclude_unset=True)
+        
+        # --- EZ A JAVÍTÁS: Töröljük a felesleges kulcsokat ---
+        # Ez megvédi a szervert attól, ha a frontend túl sok adatot küld
+        keys_to_remove = ["pipeline_name", "version", "target_table_name", "dag_id"]
+        for key in keys_to_remove:
+            updated_data.pop(key, None)
+        # -----------------------------------------------------
+
         updated_data['source'] = old_pipeline.source
         new_version = old_pipeline.version + 1
 
@@ -131,8 +139,14 @@ def updated_pipeline(
         )
         db.add(new_status)
         db.commit()
-        pause_airflow_dag(old_pipeline.dag_id)
-        unpause_airflow_dag(new_pipeline.dag_id)
+        
+        # Hibakezelés a DAG leállításához/indításához, hogy ne omoljon össze a mentés
+        try:
+            pause_airflow_dag(old_pipeline.dag_id)
+            unpause_airflow_dag(new_pipeline.dag_id)
+        except Exception as e:
+            print(f"[WARNING] DAG pause/unpause failed: {e}")
+
         return new_pipeline
 
     except SQLAlchemyError as e:
@@ -180,3 +194,23 @@ async def upload_extra_file(file: UploadFile = File(...)):
         }
     except Exception as e:
         return {"error": str(e)}
+
+@router.get("/{pipeline_id}/columns")
+def get_pipeline_columns(pipeline_id: int, db: Session = Depends(get_db)):
+    """
+    Segéd-végpont: Visszaadja egy pipeline kimeneti táblájának oszlopait.
+    Ezt hívja meg a frontend, amikor kiválasztod a pipeline-t.
+    """
+    pipeline = db.query(ETLConfig).filter(ETLConfig.id == pipeline_id).first()
+    if not pipeline or not pipeline.target_table_name:
+        return []
+
+    try:
+        inspector = inspect(db.get_bind())
+        if inspector.has_table(pipeline.target_table_name):
+            # Csak az oszlopnevek listáját adjuk vissza
+            return [col['name'] for col in inspector.get_columns(pipeline.target_table_name)]
+        return []
+    except Exception as e:
+        print(f"Error fetching columns: {e}")
+        return []
