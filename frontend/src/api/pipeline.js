@@ -44,3 +44,6 @@ export const getPipelineLog = (pipelineId, runId) =>
 
 export const getPipelineHistory = () =>
   api.get(`${prefix}/history`);
+
+export const getPipelineLogs = (pipelineId) =>
+  api.get(`${prefix}/history/logs/${pipelineId}`);
