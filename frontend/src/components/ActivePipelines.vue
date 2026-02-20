@@ -1,6 +1,6 @@
 <template>
   <div class="container">
-    <h2>Active ETL Pipelines</h2>
+    <h2>ACTIVE JOBS</h2>
 
     <table>
       <thead>

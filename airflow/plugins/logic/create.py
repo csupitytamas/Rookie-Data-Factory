@@ -31,7 +31,7 @@ def create_table(pipeline_id, **kwargs):
         order_by_column = result.get('order_by_column')
         order_direction = result.get('order_direction')
 
-        # JSON decode, ha szükséges
+        # JSON decode
         if isinstance(field_mappings, str):
             field_mappings = json.loads(field_mappings)
         if isinstance(selected_columns, str):
@@ -41,7 +41,7 @@ def create_table(pipeline_id, **kwargs):
         if isinstance(group_by_columns, str):
             group_by_columns = json.loads(group_by_columns) if group_by_columns else []
 
-        # Field mappings formátum konverzió: lista -> dict
+        # Lista -> Dict konverzió
         if isinstance(field_mappings, list):
             print("[CREATE_TABLE] Converting field_mappings from list to dict format")
             field_mappings_dict = {}
@@ -52,7 +52,7 @@ def create_table(pipeline_id, **kwargs):
                     field_mappings_dict[field_name] = field_props
             field_mappings = field_mappings_dict
 
-        # 🔥 DYNAMIC SCHEMA DISCOVERY – ha nincs egyetlen field_mapping sem
+        # 🔥 DYNAMIC SCHEMA DISCOVERY
         if not field_mappings:
             print("[CREATE_TABLE] field_mappings üres → dinamikus séma felfedezés XCom-ból")
             ti = kwargs["ti"]
@@ -80,23 +80,26 @@ def create_table(pipeline_id, **kwargs):
                     "separator": ""
                 }
             field_mappings = auto_field_mappings
-            
-            # FIX DUPLICATE id: rename WHO id -> who_id
-            if "id" in field_mappings:
-                field_mappings["who_id"] = field_mappings.pop("id")
 
-        # --- JAVÍTÁS ITT ---
-        # Ha a selected_columns üres (pl. Advanced SQL mód miatt), 
-        # akkor alapértelmezésben vegyük az összes mezőt a field_mappings-ből.
-        # Ez a blokk korábban csak a 'if not field_mappings' ágon belül volt,
-        # most kihoztuk ide, hogy mindig fusson.
+        # --- AUTOMATIKUS JAVÍTÁS: id ütközés kezelése ---
+        if "id" in field_mappings:
+            print("[CREATE_TABLE] ⚠️ 'id' column detected in input! Renaming to 'source_id' to avoid PK conflict.")
+            props = field_mappings["id"]
+            if not props.get("rename"):
+                props["rename"] = True
+                props["newName"] = "source_id"
+                print("[CREATE_TABLE] -> Auto-rename: id -> source_id")
+            elif props.get("rename") and props.get("newName") == "id":
+                props["newName"] = "source_id"
+                print("[CREATE_TABLE] -> Fixing manual rename: id -> source_id")
+        # ------------------------------------------------
+
         if not selected_columns and field_mappings:
             print("[CREATE_TABLE] selected_columns üres volt (pl. Advanced Mode) → Minden mező kiválasztása.")
             selected_columns = list(field_mappings.keys())
             
         if not column_order and field_mappings:
             column_order = list(field_mappings.keys())
-        # -------------------
 
         print("[CREATE_TABLE] Konfiguráció véglegesítve:", selected_columns)
 
@@ -111,9 +114,30 @@ def create_table(pipeline_id, **kwargs):
             field_mappings=field_mappings
         )
 
+        # --- JAVÍTÁS: Duplikációk eltávolítása és 'id' végső szűrése ---
+        print(f"[CREATE_TABLE] Raw columns before dedup: {final_columns}")
+        
+        seen = set()
+        deduped_columns = []
+        for col in final_columns:
+            # 1. 'id' szűrése (ha véletlenül benne maradt volna)
+            if col == 'id':
+                print("[CREATE_TABLE] 🚨 Removing 'id' from final columns to prevent PK conflict.")
+                continue
+            
+            # 2. Duplikáció szűrése (pl. DIMONE)
+            if col not in seen:
+                seen.add(col)
+                deduped_columns.append(col)
+            else:
+                print(f"[CREATE_TABLE] ⚠️ Duplicate column detected and removed: {col}")
+        
+        final_columns = deduped_columns
+        # ----------------------------------------------------------------
+
         print(f"[CREATE_TABLE] FINAL COLUMNS: {final_columns}")
 
-        # Átnevezési mapping
+        # Átnevezési mapping (XCom-hoz)
         col_rename_map = {}
         for orig, props in field_mappings.items():
             if props.get("delete", False):
@@ -139,8 +163,9 @@ def create_table(pipeline_id, **kwargs):
         # --- Tábla létrehozás ---
         column_defs = []
         for col in final_columns:
+            # Megkeressük az eredeti mezőt a mappingben
             props = next((p for k, p in field_mappings.items()
-                          if (p.get("rename") and p.get("newName") == col) or k == col), {})
+                          if (p.get("rename") and p.get("newName") == col) or (not p.get("rename") and k == col)), {})
 
             raw_type = props.get('type', 'string')
             col_type = map_to_postgresql_type(raw_type)

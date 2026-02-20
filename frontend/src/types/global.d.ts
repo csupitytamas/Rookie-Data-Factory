@@ -6,6 +6,7 @@ declare global {
             ipcRenderer?: {
                 on(channel: string, listener: (event: any, ...args: any[]) => void): void;
             };
+            selectFolder: () => Promise<string | null>;
         };
     }
 }

@@ -10,7 +10,7 @@ from src.common.airflow_client import get_dag_run_logs
 
 router = APIRouter()
 
-@router.get("/", response_model=List[Any])
+@router.get("", response_model=List[Any])
 def get_pipeline_history(db: Session = Depends(get_db)):
     """
     Visszaadja a pipeline-ok aktuális állapotát (History/Status nézet).

@@ -160,6 +160,8 @@ services:
   airflow-worker:
     <<: *airflow-common
     command: celery worker
+    mem_limit: 1500m 
+    mem_reservation: 500m
     healthcheck:
       # yamllint disable rule:line-length
       test:

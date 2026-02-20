@@ -5,6 +5,7 @@ import json
 import re
 from transforms.data_load import load_overwrite, load_append, load_upsert
 from transforms.exporter import export_data
+import pandas as pd
 
 def sanitize_column_name(col_name):
     """
@@ -122,12 +123,20 @@ def load_data(pipeline_id, **kwargs):
                     df_struct.to_sql(table_name, engine, if_exists='replace', index=False)
                     print("[LOAD_DATA] Table recreated successfully.")
 
-    # 5. Betöltés (vagy Export)
     if save_option == "createfile":
         print(f"[LOAD_DATA] Export file, format: {file_format}")
+        custom_path = None
+        try:
+            with engine.connect() as conn:
+                settings_res = conn.execute(sa.text("SELECT download_path FROM system_settings LIMIT 1")).mappings().first()
+                
+                if settings_res and settings_res['download_path']:
+                    custom_path = settings_res['download_path']
+                    print(f"[LOAD_DATA] Custom download path found: {custom_path}")
+        except Exception as e:
+            print(f"[LOAD_DATA] ⚠️ Nem sikerült lekérni a beállításokat: {e}")
         df = pd.DataFrame(data)
-        export_data(df, table_name, file_format)
-        return
+        export_data(df, table_name, file_format, output_path=None)
 
     with engine.connect() as conn:
         # Unique oszlopok lekérése (Upserthez)

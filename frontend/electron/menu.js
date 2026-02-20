@@ -22,7 +22,7 @@ function createMenu(mainWindow) {
             label: "Projects",
             submenu: [
                 {
-                    label: "Create new ETL pipeline",
+                    label: "Create new",
                     click: () => {
                         if (mainWindow) {
                             mainWindow.webContents.send("navigate", "/create-etl");
@@ -30,7 +30,7 @@ function createMenu(mainWindow) {
                     }
                 },
                 {
-                    label: "Active ETL pipelines",
+                    label: "Active jobs",
                     click: () => {
                         if (mainWindow) {
                             mainWindow.webContents.send("navigate", "/active-pipelines");
@@ -49,25 +49,13 @@ function createMenu(mainWindow) {
         },
         {
               label: "Settings",
-              submenu: [
-                {
-                  label: "User settings",
-                  click: () => {
+               click: () => {
                     if (mainWindow) {
                       mainWindow.webContents.send("navigate", "/settings");
                     }
-                  }
-                },
-                {
-                  label: "Logout",
-                  click: () => {
-                    if (mainWindow) {
-                      mainWindow.webContents.send("navigate", "/logout");
                     }
-                  }
-                }
-              ]
-            }
+                }    
+    
     ];
 
     const menu = Menu.buildFromTemplate(template);

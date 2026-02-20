@@ -1,8 +1,8 @@
 <template>
   <div class="history-page">
     <div class="header">
-      <h2>Pipeline Execution History</h2>
-      <button @click="refreshHistory" class="btn-refresh">🔄 Refresh</button>
+      <h2>Execution History</h2>
+      <button @click="refreshHistory" class="btn-refresh">🔄</button>
     </div>
 
     <div v-if="loading" class="loading-state">
@@ -18,8 +18,8 @@
       <table class="history-table">
         <thead>
           <tr>
-            <th>Date & Time</th>
-            <th>Pipeline Name</th>
+            <th>Date</th>
+            <th>Name</th>
             <th>Source</th>
             <th>Status</th>
             <th>Logs</th>
@@ -39,7 +39,7 @@
             </td>
             <td>
                <button @click="viewLogs(item.id)" class="btn-logs">
-                 📜 Logs
+                 Report from the job
                </button>
             </td>
           </tr>
@@ -64,7 +64,7 @@
         
         <div class="modal-body">
             <div v-if="logLoading" class="log-loading">
-               <div class="spinner small"></div> Fetching logs from Airflow...
+               <div class="spinner small"></div> Fetching logs...
             </div>
             <pre v-else class="log-viewer">{{ currentLogs }}</pre>
         </div>
@@ -75,7 +75,7 @@
             class="btn-download" 
             :disabled="!currentLogs || logLoading"
           >
-            ⬇️ Download .txt
+            Download 
           </button>
           
           <button @click="closeLogs" class="btn-close">Close</button>
@@ -97,7 +97,6 @@ const error = ref(null);
 const showLogModal = ref(false);
 const logLoading = ref(false);
 const currentLogs = ref("");
-// Eltároljuk a kiválasztott pipeline ID-t a fájlnévhez
 const currentPipelineId = ref(null); 
 
 const formatDate = (dateString) => {
@@ -126,7 +125,7 @@ const viewLogs = async (pipelineId) => {
   showLogModal.value = true;
   logLoading.value = true;
   currentLogs.value = "";
-  currentPipelineId.value = pipelineId; // ID mentése a fájlnévhez
+  currentPipelineId.value = pipelineId; 
   
   try {
     const response = await getPipelineLogs(pipelineId);
@@ -139,18 +138,11 @@ const viewLogs = async (pipelineId) => {
   }
 };
 
-// --- ÚJ FÜGGVÉNY: LETÖLTÉS ---
 const downloadLogs = () => {
   if (!currentLogs.value) return;
-
-  // Fájlnév generálása: pipeline_ID_datum.txt
   const dateStr = new Date().toISOString().slice(0, 10);
   const fileName = `pipeline_${currentPipelineId.value}_logs_${dateStr}.txt`;
-
-  // Blob készítése a szövegből
   const blob = new Blob([currentLogs.value], { type: 'text/plain' });
-  
-  // Láthatatlan letöltő link készítése és kattintása
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = fileName;
@@ -170,7 +162,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* A stílusok nagyrészt változatlanok, csak az új gombhoz adunk hozzá */
 
 .history-page {
   max-width: 1200px;
@@ -339,8 +330,8 @@ onMounted(() => {
 .modal-footer {
   padding: 15px 20px;
   display: flex;
-  justify-content: flex-end; /* Jobbra igazítva */
-  gap: 10px; /* Távolság a gombok között */
+  justify-content: flex-end;
+  gap: 10px; 
   background-color: #f8f9fa;
   border-top: 1px solid #eee;
 }
@@ -355,9 +346,8 @@ onMounted(() => {
 }
 .btn-close:hover { background-color: #5a6268; }
 
-/* ÚJ STÍLUS A LETÖLTÉS GOMBHOZ */
 .btn-download {
-  background-color: #28a745; /* Zöld */
+  background-color: #28a745; 
   color: white;
   border: none;
   padding: 8px 20px;
