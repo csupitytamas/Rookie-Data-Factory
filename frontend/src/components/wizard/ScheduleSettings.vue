@@ -2,72 +2,91 @@
   <div class="form-layout">
     <h3>Schedule & Conditions</h3>
     
-    <div class="form-row">
-      <label>Schedule:</label>
-      <select v-model="store.config.schedule">
-        <option value="daily">Daily (@daily)</option>
-        <option value="weekly">Weekly (@weekly)</option>
-        <option value="monthly">Monthly (@monthly)</option>
-        <option value="hourly">Hourly (@hourly)</option>
-        <option value="once">Once</option>
-        <option value="custom">Custom (Cron)</option>
-      </select>
-    </div>
-
-    <div v-if="store.config.schedule === 'custom'" class="form-row">
-      <label>Time (HH:MM):</label>
-      <input type="time" v-model="store.config.custom_time" />
-    </div>
-
-    <div class="form-row">
-      <label>Running Condition:</label>
-      <select v-model="store.config.condition">
-        <option value="none">None</option>
-        <option value="withsource">With source file</option>
-        <option value="withdependency">With another dataset</option>
-      </select>
-    </div>
-
-    <div v-if="store.config.condition === 'withdependency'" class="form-row">
-      <label>Select from the active Jobs </label>
-      <select v-model="store.config.dependency_pipeline_id" class="pipeline-select">
-        <option disabled :value="null">-- Please select --</option>
-        <option 
-          v-for="pipeline in availablePipelines" 
-          :key="pipeline.id" 
-          :value="pipeline.id"
-        >
-          {{ pipeline.pipeline_name }}
-        </option>
-      </select>
-      <small v-if="loadingColumns" style="color: blue;">Loading columns...</small>
-      <small v-else-if="store.config.parameters?.dependency_columns?.length" style="color: green;">
-        ✅ Columns loaded successfully ({{ store.config.parameters.dependency_columns.length }})
-      </small>
-    </div>
-
-    <div v-if="store.config.condition === 'withsource'" class="form-row">
-      <label>Upload source file:</label>
-      <div style="display:flex; flex-direction:column; gap:5px;">
-        <div style="display:flex; gap:10px; align-items:center;">
-          <input 
-            type="file" 
-            @change="handleFileUpload" 
-            accept=".csv,.json,.parquet"
-            :disabled="isUploading"
-          />
+    <div class="content-width">
+      
+      <div class="settings-box">
+        <div class="form-row">
+          <label>Schedule Frequency:</label>
+          <select v-model="store.config.schedule" class="form-control">
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="hourly">Hourly</option>
+            <option value="once">Once</option>
+            <option value="custom">Custom</option>
+          </select>
         </div>
-        
-        <span v-if="isUploading" style="font-size:0.9em; color:blue;">
-          Uploading and analyzing...
-        </span>
-        <span v-else-if="uploadError" style="font-size:0.9em; color:red;">
-          {{ uploadError }}
-        </span>
-        <span v-else-if="store.config.uploaded_file_name" style="font-size:0.9em; color:green;">
-          ✅ Ready: {{ store.config.uploaded_file_name }} ({{ columnCount }} columns found)
-        </span>
+
+        <div v-if="store.config.schedule === 'custom'" class="time-picker-container transition-fade">
+          <label class="time-label">Execution Time (HH:MM):</label>
+          <input type="time" v-model="store.config.custom_time" class="time-input-large" />
+        </div>
       </div>
+
+      <div class="settings-box mt-3">
+        <div class="form-row">
+          <label>Additional sources</label>
+          <select v-model="store.config.condition" class="form-control">
+            <option value="none">None</option>
+            <option value="withsource">With a source file</option>
+            <option value="withdependency">With a job</option>
+          </select>
+        </div>
+
+        <div v-if="store.config.condition === 'withdependency'" class="form-row mt-3">
+          <label>Dependency Job:</label>
+          <select v-model="store.config.dependency_pipeline_id" class="form-control">
+            <option disabled :value="null">Please select</option>
+            <option 
+              v-for="pipeline in availablePipelines" 
+              :key="pipeline.id" 
+              :value="pipeline.id"
+            >
+              {{ pipeline.pipeline_name }}
+            </option>
+          </select>
+          <small v-if="loadingColumns" class="status-text text-blue mt-1">Loading columns...</small>
+        </div>
+
+        <div v-if="store.config.condition === 'withsource'" class="form-row mt-3">
+          <label>Upload Source File:</label>
+          
+          <div class="file-upload-wrapper">
+            <input 
+              type="file" 
+              id="custom-file-upload" 
+              class="hidden-file-input"
+              @change="handleFileUpload" 
+              accept=".csv,.json,.parquet"
+              :disabled="isUploading"
+            />
+            
+            <label for="custom-file-upload" class="file-upload-box" :class="{ 'uploading': isUploading }">
+              <span v-if="!isUploading && !store.config.uploaded_file_name">
+                <strong>Click here</strong> to upload a file (CSV, JSON, Parquet)
+              </span>
+              <span v-else-if="isUploading">
+                Uploading and analyzing... please wait.
+              </span>
+              <span v-else-if="store.config.uploaded_file_name">
+                Change file
+              </span>
+            </label>
+          </div>
+          
+          <div class="upload-status">
+            <span v-if="uploadError" class="status-text text-red">
+              ❌ {{ uploadError }}
+            </span>
+            <span v-else-if="store.config.uploaded_file_name && !isUploading" class="status-text text-green">
+              ✅ <strong>File Ready:</strong> {{ store.config.uploaded_file_name }} <br>
+              <small>({{ columnCount }} columns found)</small>
+            </span>
+          </div>
+
+        </div>
+      </div>
+
     </div>
   </div>
 </template>
@@ -102,7 +121,6 @@ onMounted(async () => {
   }
 });
 
-// --- ITT A JAVÍTOTT WATCH LOGIKA ---
 watch(
   () => store.config.dependency_pipeline_id,
   async (newId) => {
@@ -117,14 +135,10 @@ watch(
     try {
       console.log(`Pipeline selected (${newId}). Fetching columns...`);
 
-      // 1. KULCS FONTOSSÁGÚ SOR: Töröljük a cache-t!
-      // Ezzel kényszerítjük a FieldMapping oldalt, hogy újratöltse az adatokat.
       store.config.column_order = []; 
 
-      // 2. Oszlopok lekérése
       const response = await getPipelineColumns(newId);
       
-      // 3. Mentés a Store-ba
       store.config.parameters = {
         ...store.config.parameters,
         dependency_columns: response.data || [] 
@@ -180,14 +194,167 @@ const handleFileUpload = async (event: any) => {
 };
 </script>
 
-<style scoped src="../styles/CreateETLPipeline.style.css"></style>
-
 <style scoped>
-.pipeline-select {
+.form-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   width: 100%;
-  padding: 8px;
+}
+
+.content-width {
+  width: 70%;
+}
+
+h3 {
+  margin-bottom: 20px;
+}
+
+.form-row {
+  margin-bottom: 15px;
+  text-align: left;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.form-control {
+  width: 100%;
+  padding: 10px;
   border: 1px solid #ccc;
   border-radius: 4px;
-  background-color: white;
+  font-size: 1em;
+  font-family: inherit;
+  background-color: #fff;
+}
+
+.settings-box {
+  background: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+
+.mt-3 {
+  margin-top: 20px;
+}
+
+/* --- ÚJ: KIEMELT IDŐVÁLASZTÓ STÍLUSOK --- */
+.time-picker-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;     
+  justify-content: center;
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #f0f8ff; 
+  border-radius: 8px;
+  border: 1px dashed #b8daff;
+}
+
+.time-label {
+  color: #0056b3;
+  font-size: 1em;
+  margin-bottom: 10px;
+}
+
+.time-input-large {
+  font-size: 1.2em;        
+  font-weight: bold;       
+  padding: 10px 20px;
+  color: #333;
+  border: 2px solid #007bff; 
+  border-radius: 6px;
+  background-color: #fff;
+  text-align: center;      
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease-in-out;
+}
+
+.time-input-large:hover,
+.time-input-large:focus {
+  box-shadow: 0 0 10px rgba(0, 123, 255, 0.3);
+  border-color: #0056b3;
+}
+
+/* --- FÁJLFELTÖLTŐ STÍLUSOK --- */
+.file-upload-wrapper {
+  position: relative;
+  width: 100%;
+  margin-top: 5px;
+}
+
+.hidden-file-input {
+  width: 0.1px;
+  height: 0.1px;
+  opacity: 0;
+  overflow: hidden;
+  position: absolute;
+  z-index: -1;
+}
+
+.file-upload-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 25px 20px;
+  background-color: #fcfcfc;
+  border: 2px dashed #007bff;
+  border-radius: 8px;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.file-upload-box:hover {
+  background-color: #f0f8ff;
+  border-color: #0056b3;
+}
+
+.file-upload-box.uploading {
+  border-color: #adb5bd;
+  background-color: #e9ecef;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.upload-icon {
+  font-size: 2.5em;
+  margin-bottom: 10px;
+  opacity: 0.8;
+}
+
+.upload-status {
+  margin-top: 15px;
+  text-align: center;
+  min-height: 25px; 
+}
+
+.status-text {
+  display: inline-block;
+  padding: 8px 15px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.text-blue { color: #004085; background-color: #cce5ff; }
+.text-red { color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; }
+.text-green { color: #155724; background-color: #d4edda; border: 1px solid #c3e6cb; }
+
+/* Animációk */
+.transition-fade {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>
