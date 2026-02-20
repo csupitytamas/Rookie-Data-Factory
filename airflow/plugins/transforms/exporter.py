@@ -4,10 +4,27 @@ import pandas as pd
 import yaml
 import openpyxl
 
+# MÓDOSÍTÁS: Hozzáadtuk az 'output_path' paramétert, alapértelmezetten None
+def export_data(df: pd.DataFrame, table_name: str, file_format: str, output_path: str = None):
+    
+    # 1. Útvonal kiválasztása
+    if output_path:
+        # Ha kaptunk útvonalat a beállításokból, azt használjuk
+        output_dir = Path(output_path)
+    else:
+        # Ha nincs beállítás, marad a régi alapértelmezett (fallback)
+        output_dir = Path(__file__).parent.parent / "out" / "output"
 
-def export_data(df: pd.DataFrame, table_name: str, file_format: str):
-    output_dir = Path(__file__).parent.parent / "out" / "output"
-    os.makedirs(output_dir, exist_ok=True)
+    # 2. Mappa létrehozása (Biztonsági ellenőrzéssel a Docker miatt)
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+    except OSError as e:
+        # Ha a Docker nem éri el a külső mappát (pl. Windows path), akkor nem omlunk össze,
+        # hanem visszaváltunk a belső mappára, hogy az adat megmaradjon.
+        print(f"⚠️ FIGYELEM: A választott mappa ({output_dir}) nem írható a rendszer által (Docker jogosultság?).")
+        print(f"   -> Mentés az alapértelmezett belső mappába.")
+        output_dir = Path(__file__).parent.parent / "out" / "output"
+        os.makedirs(output_dir, exist_ok=True)
 
     file_path = output_dir / f"{table_name}.{file_format.lower()}"
 

@@ -1,7 +1,3 @@
-"""
-Connector Helper for Airflow DAGs
-Ez a modul lehetővé teszi, hogy az Airflow DAG-ok használják a backend connector réteget.
-"""
 
 import sys
 import os

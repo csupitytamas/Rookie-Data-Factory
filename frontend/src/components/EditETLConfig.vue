@@ -1,6 +1,6 @@
 <template>
   <div class="config-container wizard-container">
-    <h2>Edit Pipeline Configuration</h2>
+    <h2>Edit the configuration</h2>
 
     <div class="wizard-header-custom">
       <div 
@@ -63,21 +63,19 @@
 import { defineComponent, ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePipelineStore } from '@/stores/pipelineStore';
-import { loadPipelineData, updatePipeline } from '@/api/pipeline';
+import { loadPipelineData, updatePipeline, loadSchemaBySource } from '@/api/pipeline';
 
-// A közös wizard komponensek importálása
-// (A BasicSettings és ApiSettings szándékosan hiányzik, hogy ne lehessen elrontani a forrást)
+import ScheduleSettings from './wizard/ScheduleSettings.vue';
 import FieldMapping from './wizard/FieldMapping.vue';
 import TransformSettings from './wizard/TransformSettings.vue';
-import ScheduleSettings from './wizard/ScheduleSettings.vue';
 import SaveOptions from './wizard/SaveOptions.vue';
 
 export default defineComponent({
   name: 'EditorETLConfig',
   components: {
+    ScheduleSettings,
     FieldMapping,
     TransformSettings,
-    ScheduleSettings,
     SaveOptions
   },
   setup() {
@@ -85,67 +83,67 @@ export default defineComponent({
     const route = useRoute();
     const router = useRouter();
     const pipelineId = route.query.id;
-
-    // --- LÉPÉSEK DEFINIÁLÁSA (4 Lépés) ---
-    // Sorrend: Mapping -> Transform -> Schedule -> Output
     const currentStep = ref(1);
-    const steps = ['Mapping', 'Transform', 'Schedule', 'Output'];
-    const componentList = ['FieldMapping', 'TransformSettings', 'ScheduleSettings', 'SaveOptions'];
-
-    const currentStepComponent = computed(() => {
-      return componentList[currentStep.value - 1];
-    });
-
+    const steps = ['Schedule', 'Mapping', 'Transform', 'Output'];
+    const componentList = ['ScheduleSettings', 'FieldMapping', 'TransformSettings', 'SaveOptions'];
+    const currentStepComponent = computed(() => componentList[currentStep.value - 1]);
     const nextStep = () => { if (currentStep.value < steps.length) currentStep.value++; };
     const prevStep = () => { if (currentStep.value > 1) currentStep.value--; };
-
-    // --- ADATBETÖLTÉS ÉS MIGRÁCIÓ ---
     onMounted(async () => {
       if (!pipelineId) return;
 
       try {
         const response = await loadPipelineData(pipelineId);
         const pipeline = response.data;
-
-        // 1. MIGRÁCIÓS LOGIKA (DIM1 -> DIMONE)
-        // Ezt itt kell elvégezni, mielőtt betöltjük a Store-ba, 
-        // hogy a FieldMapping komponens már a jó adatokat lássa.
         const mappings = pipeline.field_mappings || {};
-        let order = pipeline.column_order || [];
+        let savedOrder = pipeline.column_order || [];
         let selected = pipeline.selected_columns || [];
         let groups = pipeline.group_by_columns || [];
 
         if (mappings['dim1']) {
-          console.log("Migrating dim1 to DIMONE in Editor...");
-          mappings['DIMONE'] = { 
-            ...mappings['dim1'], 
-            rename: false, // Az új API-ban már eleve ez a neve
-            newName: '' 
-          };
-          delete mappings['dim1'];
-
-          // Listák frissítése
-          const replaceItem = (arr, oldVal, newVal) => {
-            const idx = arr.indexOf(oldVal);
-            if (idx !== -1) arr[idx] = newVal;
-          };
-
-          replaceItem(order, 'dim1', 'DIMONE');
-          replaceItem(selected, 'dim1', 'DIMONE');
-          replaceItem(groups, 'dim1', 'DIMONE');
-
-          if (pipeline.order_by_column === 'dim1') {
-            pipeline.order_by_column = 'DIMONE';
-          }
+           mappings['DIMONE'] = { ...mappings['dim1'], rename: false, newName: '' };
+           delete mappings['dim1'];
+           const replaceItem = (arr, oldVal, newVal) => {
+             const idx = arr.indexOf(oldVal);
+             if (idx !== -1) arr[idx] = newVal;
+           };
+           replaceItem(savedOrder, 'dim1', 'DIMONE');
+           replaceItem(selected, 'dim1', 'DIMONE');
+           replaceItem(groups, 'dim1', 'DIMONE');
+           if (pipeline.order_by_column === 'dim1') pipeline.order_by_column = 'DIMONE';
         }
 
-        // 2. ADATOK BETÖLTÉSE A STORE-BA
-        // A wizard komponensek innen fogják olvasni az adatokat
+    
+        if (pipeline.source && pipeline.parameters && Object.keys(pipeline.parameters).length > 0) {
+          console.log("Fetching full schema to merge with saved columns...");
+          try {
+            const schemaResponse = await loadSchemaBySource({
+              source: pipeline.source,
+              parameters: pipeline.parameters
+            });
+            const apiColumns = (schemaResponse.data.field_mappings || []).map(f => f.name);
+            const newColumns = apiColumns.filter(col => !savedOrder.includes(col));
+            savedOrder = [...savedOrder, ...newColumns];
+            console.log(`Schema merged. Saved: ${pipeline.column_order?.length}, New total: ${savedOrder.length}`);
+            newColumns.forEach(col => {
+                if (!mappings[col]) {
+                    mappings[col] = { rename: false, newName: "", unique: false, delete: false };
+                }
+            });
+
+          } catch (schemaErr) {
+            console.warn("Could not fetch fresh schema (using only saved columns):", schemaErr);
+          }
+        } else {
+             console.warn("Skipping schema fetch: No source or parameters found in saved pipeline.");
+        }
+    
         store.$patch({
-          pipeline_name: pipeline.pipeline_name, // Csak megjelenítéshez, szerkeszteni nem engedjük
-          source: pipeline.source,               // Csak megjelenítéshez
+          pipeline_name: pipeline.pipeline_name, 
+          source: pipeline.source,               
           config: {
             source_config: pipeline.source_config,
+            parameters: pipeline.parameters,
             schedule: pipeline.schedule,
             custom_time: pipeline.custom_time,
             condition: pipeline.condition,
@@ -153,9 +151,11 @@ export default defineComponent({
             uploaded_file_name: pipeline.uploaded_file_name,
             update_mode: pipeline.update_mode,
             save_option: pipeline.save_option,
+            
             field_mappings: mappings,
-            column_order: order,
-            selected_columns: selected,
+            column_order: savedOrder,     
+            selected_columns: selected,  
+            
             group_by_columns: groups,
             order_by_column: pipeline.order_by_column,
             order_direction: pipeline.order_direction,
@@ -166,24 +166,15 @@ export default defineComponent({
         });
 
       } catch (err) {
-        console.error("Failed to load pipeline data:", err);
-        alert("Hiba a pipeline betöltésekor!");
+        alert("Failed to load");
       }
     });
 
-    // --- MENTÉS ---
     const submitChanges = async () => {
       try {
-        // Összeállítjuk a payloadot a Store-ból
-        // Figyelem: A pipeline_name és source nem változik, de a config igen
-        const payload = {
-          ...store.config
-        };
-
-        console.log("Updating pipeline with payload:", payload);
-
+        const payload = { ...store.config };
+        console.log("Submitting update:", payload);
         await updatePipeline(pipelineId, payload);
-
         alert('Pipeline updated successfully!');
         router.push('/'); 
       } catch (err) {
@@ -192,20 +183,12 @@ export default defineComponent({
       }
     };
 
-    return {
-      currentStep,
-      steps,
-      currentStepComponent,
-      nextStep,
-      prevStep,
-      submitChanges
-    };
+    return { currentStep, steps, currentStepComponent, nextStep, prevStep, submitChanges };
   }
 });
 </script>
-
 <style scoped>
-/* WIZARD CONTAINER (A dobozos kinézetért) */
+/* WIZARD CONTAINER */
 .wizard-container {
   max-width: 1000px;
   margin: 0 auto;
@@ -216,7 +199,7 @@ export default defineComponent({
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* ================= HEADER STÍLUS (A KÉP ALAPJÁN) ================= */
+/* HEADER */
 .wizard-header-custom {
   display: flex;
   align-items: center;
@@ -231,7 +214,6 @@ export default defineComponent({
   flex: 1;
 }
 
-/* Az utolsó elemnél ne nyúljon tovább a div */
 .step-item:last-child {
   flex: 0;
 }
@@ -266,7 +248,6 @@ export default defineComponent({
   margin-right: 15px;
 }
 
-/* AKTÍV LÉPÉS (Jelenlegi - KÉK) */
 .step-item.active .step-circle {
   background-color: #007bff;
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
@@ -276,7 +257,6 @@ export default defineComponent({
   font-weight: bold;
 }
 
-/* BEFEJEZETT LÉPÉS (Már kész - ZÖLD) */
 .step-item.completed .step-circle {
   background-color: #28a745;
 }

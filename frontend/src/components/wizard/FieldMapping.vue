@@ -46,7 +46,7 @@
 import { ref, onMounted } from 'vue';
 import draggable from 'vuedraggable';
 import { usePipelineStore } from '@/stores/pipelineStore';
-import { loadSchemaBySource } from '@/api/pipeline';
+import { loadSchemaBySource, getPipelineColumns } from '@/api/pipeline';
 
 const store = usePipelineStore();
 const loading = ref(false);
@@ -64,14 +64,11 @@ const toggleSettings = (col: string) => {
 };
 
 onMounted(async () => {
-  // Ha már be vannak töltve az oszlopok, nem töltjük újra
   if (store.config.column_order && store.config.column_order.length > 0) {
       return; 
   }
-
   loading.value = true;
   try {
-      // 1. API Oszlopok (Csak akkor kérjük le, ha nem "Pipeline" a forrás és van beállítva source)
       let apiCols: string[] = [];
       if (store.source && store.source !== 'Pipeline') {
         try {
@@ -83,27 +80,32 @@ onMounted(async () => {
           const resp = await loadSchemaBySource(payload);
           apiCols = (resp.data.field_mappings || []).map((f: any) => f.name);
         } catch (e) {
-          console.warn("API schema load skipped or failed (might be normal if using Dependency only):", e);
+          console.warn("API schema load skipped or failed:", e);
         }
       }
-      
-      // 2. Fájl Oszlopok (A store-ból olvassuk)
       const fileCols = store.config.parameters?.extra_file_columns || [];
-      
-      // 3. DEPENDENCY Oszlopok (EZ HIÁNYZOTT!)
-      // A BasicSettings.vue már elmentette ide őket, most kiolvassuk.
-      const depCols = store.config.parameters?.dependency_columns || [];
+      let depCols: string[] = [];
+      if (store.config.parameters?.dependency_columns) {
+         depCols = store.config.parameters.dependency_columns;
+      }
+      if (depCols.length === 0 && store.config.dependency_pipeline_id) {
+         try {
+             console.log(`Fetching columns for dependency pipeline: ${store.config.dependency_pipeline_id}`);
+             const res = await getPipelineColumns(store.config.dependency_pipeline_id);
+             if (Array.isArray(res.data)) {
+                 depCols = res.data;
+             } else if (res.data.columns) {
+                 depCols = res.data.columns;
+             }
+         } catch (e) {
+             console.error("Failed to load dependency columns:", e);
+         }
+      }
       
       console.log(`API Cols: ${apiCols.length}, File Cols: ${fileCols.length}, Dep Cols: ${depCols.length}`);
-
-      // 4. Összefésülés (Duplikációk szűrése)
       const allCols = [...new Set([...apiCols, ...fileCols, ...depCols])];
-      
-      // Store frissítése
       store.config.column_order = [...allCols];
       store.config.selected_columns = [...allCols];
-      
-      // Mappings inicializálása
       const mappings: any = store.config.field_mappings || {};
       allCols.forEach((c: string) => {
         if (!mappings[c]) {
