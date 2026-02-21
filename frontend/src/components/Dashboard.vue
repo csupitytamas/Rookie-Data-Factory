@@ -34,7 +34,7 @@
         </table>
         <div v-if="hasMoreRows(pipeline.sampleData)" class="table-ellipsis">
           <button class="ellipsis-btn" @click="openModal(pipeline)" title="Show all data">
-            ...
+           ➕
           </button>
         </div>
       </div>

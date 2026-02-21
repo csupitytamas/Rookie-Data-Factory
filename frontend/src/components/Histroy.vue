@@ -73,9 +73,10 @@
           <button 
             @click="downloadLogs" 
             class="btn-download" 
-            :disabled="!currentLogs || logLoading"
+            :class="{ 'btn-success': isSuccess }"
+            :disabled="!currentLogs || logLoading || isSaving"
           >
-            Download 
+            {{ isSaving ? 'Saving...' : (isSuccess ? 'Success!' : 'Download') }} 
           </button>
           
           <button @click="closeLogs" class="btn-close">Close</button>
@@ -89,6 +90,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { getPipelineHistory, getPipelineLogs } from '@/api/pipeline';
+import axios from 'axios';
 
 const historyItems = ref([]);
 const loading = ref(true);
@@ -98,6 +100,8 @@ const showLogModal = ref(false);
 const logLoading = ref(false);
 const currentLogs = ref("");
 const currentPipelineId = ref(null); 
+const isSaving = ref(false); 
+const isSuccess = ref(false); 
 
 const formatDate = (dateString) => {
   if (!dateString) return '-';
@@ -126,6 +130,7 @@ const viewLogs = async (pipelineId) => {
   logLoading.value = true;
   currentLogs.value = "";
   currentPipelineId.value = pipelineId; 
+  isSuccess.value = false; 
   
   try {
     const response = await getPipelineLogs(pipelineId);
@@ -138,18 +143,64 @@ const viewLogs = async (pipelineId) => {
   }
 };
 
-const downloadLogs = () => {
+// --- LETÖLTÉS LOGIKA (Pipeline névvel) ---
+const downloadLogs = async () => {
   if (!currentLogs.value) return;
-  const dateStr = new Date().toISOString().slice(0, 10);
-  const fileName = `pipeline_${currentPipelineId.value}_logs_${dateStr}.txt`;
-  const blob = new Blob([currentLogs.value], { type: 'text/plain' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(link.href);
+  isSaving.value = true;
+  isSuccess.value = false;
+
+  try {
+    const settingsRes = await axios.get('http://localhost:8000/etl/settings/');
+    const basePath = settingsRes.data?.download_path;
+
+    if (!basePath) {
+      console.warn("There is path set!");
+      isSaving.value = false;
+      return;
+    }
+
+    const dateStr = new Date().toISOString().replace(/:/g, '-').slice(0, 19); 
+    
+    // Pipeline név megkeresése és tisztítása
+    const pipeline = historyItems.value.find(item => item.id === currentPipelineId.value);
+    const safePipelineName = pipeline && pipeline.pipeline_name 
+      ? pipeline.pipeline_name.replace(/[^a-zA-Z0-9\-_]/g, '_') 
+      : `pipeline_${currentPipelineId.value}`;
+
+    const fileName = `${safePipelineName}_logs_${dateStr}.txt`;
+
+    if (window.electron && window.electron.saveFileToFolder) {
+      const result = await window.electron.saveFileToFolder({
+        fileName: fileName,
+        fileContent: currentLogs.value,
+        basePath: basePath,
+        subFolder: 'Logs'
+      });
+
+      if (result.success) {
+        isSuccess.value = true;
+        setTimeout(() => { isSuccess.value = false; }, 1000);
+      } else {
+        console.error("Save error:", result.error);
+      }
+    } else {
+      const blob = new Blob([currentLogs.value], { type: 'text/plain' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+      
+      isSuccess.value = true;
+      setTimeout(() => { isSuccess.value = false; }, 3000);
+    }
+  } catch (error) {
+    console.error("Error:", error);
+  } finally {
+    isSaving.value = false;
+  }
 };
 
 const closeLogs = () => {
@@ -162,7 +213,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-
 .history-page {
   max-width: 1200px;
   margin: 0 auto;
@@ -354,11 +404,22 @@ onMounted(() => {
   border-radius: 4px;
   cursor: pointer;
   font-weight: 500;
+  transition: background-color 0.3s ease;
+  min-width: 105px;
 }
 .btn-download:hover { background-color: #218838; }
+
 .btn-download:disabled { 
   background-color: #94d3a2; 
   cursor: not-allowed; 
+}
+
+.btn-success {
+  background-color: #20c997 !important;
+  color: white !important;
+}
+.btn-success:hover {
+  background-color: #1aa179 !important;
 }
 
 .spinner.small {

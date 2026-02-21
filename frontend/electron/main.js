@@ -9,6 +9,7 @@ let mainWindow;
 const VITE_DEV_SERVER_URL = 'http://localhost:5173';
 const DOCKER_OUT_PATH = path.join(__dirname, '../../airflow/plugins/out/output');
 const BACKEND_SETTINGS_URL = 'http://localhost:8000/etl/settings/';
+
 function getDownloadPath() {
     return new Promise((resolve) => {
         http.get(BACKEND_SETTINGS_URL, (res) => {
@@ -25,7 +26,6 @@ function getDownloadPath() {
             res.on('end', () => {
                 try {
                     if (!data) {
-                        console.warn("⚠️ A backend válasza üres volt.");
                         return resolve(null);
                     }
                     const settings = JSON.parse(data);
@@ -40,6 +40,7 @@ function getDownloadPath() {
     });
 }
 
+// --- FÁJLFIGYELŐ (CHOKIDAR) MÓDOSÍTVA A ROOKIEDATAFACTORY MAPPÁHOZ ---
 chokidar.watch(DOCKER_OUT_PATH, {
     ignoreInitial: true, 
     persistent: true,
@@ -49,19 +50,19 @@ chokidar.watch(DOCKER_OUT_PATH, {
 }).on('add', async (filePath) => {
     const fileName = path.basename(filePath);
     try {
-        const targetFolder = await getDownloadPath();
-        if (targetFolder) {
-            if (!fs.existsSync(targetFolder)) {
-                console.log(`📁 Célmappa nem létezik, létrehozás: ${targetFolder}`);
-                fs.mkdirSync(targetFolder, { recursive: true });
+        const basePath = await getDownloadPath();
+        if (basePath) {
+            // A célmappa most: Kiválasztott_útvonal / RookieDataFactory / Results
+            const resultsFolder = path.join(basePath, 'RookieDataFactory', 'Results');
+            
+            if (!fs.existsSync(resultsFolder)) {
+                fs.mkdirSync(resultsFolder, { recursive: true });
             }
 
-            const destPath = path.join(targetFolder, fileName);
+            const destPath = path.join(resultsFolder, fileName);
             fs.copyFileSync(filePath, destPath);
-        } else {
         }
     } catch (err) {
-
     }
 });
 
@@ -113,10 +114,46 @@ app.on("window-all-closed", () => {
     }
 });
 
-// Tallózó dialógus
+// --- IPC HANDLEREK A FRONTEND KOMMUNIKÁCIÓHOZ ---
+
 ipcMain.handle('dialog:openDirectory', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
         properties: ['openDirectory']
     });
     return canceled ? null : filePaths[0];
+});
+
+// 1. Mappák automatikus létrehozása (a Settings.vue hívja majd)
+ipcMain.handle('create-directories', async (event, basePath) => {
+    if (!basePath) return { success: false };
+    try {
+        // Fő mappa: RookieDataFactory
+        const mainPath = path.join(basePath, 'RookieDataFactory');
+        // Almappák:
+        const resultsPath = path.join(mainPath, 'Results');
+        const logsPath = path.join(mainPath, 'Logs');
+        
+        // Mappák generálása
+        if (!fs.existsSync(mainPath)) fs.mkdirSync(mainPath, { recursive: true });
+        if (!fs.existsSync(resultsPath)) fs.mkdirSync(resultsPath, { recursive: true });
+        if (!fs.existsSync(logsPath)) fs.mkdirSync(logsPath, { recursive: true });
+        
+        return { success: true, mainPath, resultsPath, logsPath };
+    } catch (err) {
+        console.error('Hiba a mappák létrehozásakor:', err);
+        return { success: false, error: err.message };
+    }
+});
+
+ipcMain.handle('save-file-to-folder', async (event, { fileName, fileContent, basePath, subFolder }) => {
+    try {
+        const targetDir = path.join(basePath, 'RookieDataFactory', subFolder);
+        if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+        const filePath = path.join(targetDir, fileName);
+        fs.writeFileSync(filePath, fileContent);
+        return { success: true, filePath };
+    } catch (err) {
+        console.error("Hiba a mentéskor:", err);
+        return { success: false, error: err.message };
+    }
 });
