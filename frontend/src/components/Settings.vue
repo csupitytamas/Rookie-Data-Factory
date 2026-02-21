@@ -26,7 +26,7 @@
             placeholder="No selected path" 
             class="input-field path-input"
           />
-          <button @click="selectFolder" class="btn-browse">Tallózás</button>
+          <button @click="selectFolder" class="btn-browse"> 📂</button>
         </div>
       </div>
 
@@ -116,15 +116,13 @@ const showMessage = (msg, isSuccess) => {
   font-family: "Segoe UI", sans-serif;
   color: #333;
 }
-/* ... többi stílus ... */
-/* Győződj meg róla, hogy ezek a stílusok is itt vannak: */
 .path-selector {
   display: flex;
   gap: 10px;
 }
 .path-input {
   flex-grow: 1;
-  background-color: #f8f9fa; /* Kicsit szürkébb, ha readonly */
+  background-color: #f8f9fa; 
   cursor: default;
 }
 .btn-browse {

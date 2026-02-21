@@ -1,6 +1,8 @@
 <template>
   <div class="config-container wizard-container">
-    <h2>Edit the configuration</h2>
+    <button class="close-btn" @click="closeEditor" title="Exit and clear data">×</button>
+
+    <h2>EDIT THE CONFIGURATION</h2>
 
     <div class="wizard-header-custom">
       <div 
@@ -22,6 +24,7 @@
         <div class="step-line" v-if="index < steps.length - 1"></div>
       </div>
     </div>
+
     <div class="wizard-content">
       <keep-alive>
         <component :is="currentStepComponent" />
@@ -55,7 +58,6 @@
         Save Changes
       </button>
     </div>
-
   </div>
 </template>
 
@@ -87,11 +89,18 @@ export default defineComponent({
     const steps = ['Schedule', 'Mapping', 'Transform', 'Output'];
     const componentList = ['ScheduleSettings', 'FieldMapping', 'TransformSettings', 'SaveOptions'];
     const currentStepComponent = computed(() => componentList[currentStep.value - 1]);
+    
     const nextStep = () => { if (currentStep.value < steps.length) currentStep.value++; };
     const prevStep = () => { if (currentStep.value > 1) currentStep.value--; };
+    const closeEditor = () => {
+      if (confirm("Are you sure you want to exit?")) {
+        store.reset();
+        router.push('/'); 
+      }
+    };
+
     onMounted(async () => {
       if (!pipelineId) return;
-
       try {
         const response = await loadPipelineData(pipelineId);
         const pipeline = response.data;
@@ -100,22 +109,7 @@ export default defineComponent({
         let selected = pipeline.selected_columns || [];
         let groups = pipeline.group_by_columns || [];
 
-        if (mappings['dim1']) {
-           mappings['DIMONE'] = { ...mappings['dim1'], rename: false, newName: '' };
-           delete mappings['dim1'];
-           const replaceItem = (arr, oldVal, newVal) => {
-             const idx = arr.indexOf(oldVal);
-             if (idx !== -1) arr[idx] = newVal;
-           };
-           replaceItem(savedOrder, 'dim1', 'DIMONE');
-           replaceItem(selected, 'dim1', 'DIMONE');
-           replaceItem(groups, 'dim1', 'DIMONE');
-           if (pipeline.order_by_column === 'dim1') pipeline.order_by_column = 'DIMONE';
-        }
-
-    
         if (pipeline.source && pipeline.parameters && Object.keys(pipeline.parameters).length > 0) {
-          console.log("Fetching full schema to merge with saved columns...");
           try {
             const schemaResponse = await loadSchemaBySource({
               source: pipeline.source,
@@ -124,20 +118,16 @@ export default defineComponent({
             const apiColumns = (schemaResponse.data.field_mappings || []).map(f => f.name);
             const newColumns = apiColumns.filter(col => !savedOrder.includes(col));
             savedOrder = [...savedOrder, ...newColumns];
-            console.log(`Schema merged. Saved: ${pipeline.column_order?.length}, New total: ${savedOrder.length}`);
             newColumns.forEach(col => {
                 if (!mappings[col]) {
                     mappings[col] = { rename: false, newName: "", unique: false, delete: false };
                 }
             });
-
           } catch (schemaErr) {
-            console.warn("Could not fetch fresh schema (using only saved columns):", schemaErr);
+            console.warn("Could not fetch fresh schema:", schemaErr);
           }
-        } else {
-             console.warn("Skipping schema fetch: No source or parameters found in saved pipeline.");
         }
-    
+
         store.$patch({
           pipeline_name: pipeline.pipeline_name, 
           source: pipeline.source,               
@@ -151,11 +141,9 @@ export default defineComponent({
             uploaded_file_name: pipeline.uploaded_file_name,
             update_mode: pipeline.update_mode,
             save_option: pipeline.save_option,
-            
             field_mappings: mappings,
             column_order: savedOrder,     
             selected_columns: selected,  
-            
             group_by_columns: groups,
             order_by_column: pipeline.order_by_column,
             order_direction: pipeline.order_direction,
@@ -164,7 +152,6 @@ export default defineComponent({
             transformation: pipeline.transformation || { type: 'none' }
           }
         });
-
       } catch (err) {
         alert("Failed to load");
       }
@@ -173,9 +160,9 @@ export default defineComponent({
     const submitChanges = async () => {
       try {
         const payload = { ...store.config };
-        console.log("Submitting update:", payload);
         await updatePipeline(pipelineId, payload);
         alert('Pipeline updated successfully!');
+        store.reset(); // Mentés után is takarítunk
         router.push('/'); 
       } catch (err) {
         console.error("Error updating pipeline:", err);
@@ -183,13 +170,23 @@ export default defineComponent({
       }
     };
 
-    return { currentStep, steps, currentStepComponent, nextStep, prevStep, submitChanges };
+    return { 
+      currentStep, 
+      steps, 
+      currentStepComponent, 
+      nextStep, 
+      prevStep, 
+      submitChanges, 
+      closeEditor 
+    };
   }
 });
 </script>
+
 <style scoped>
-/* WIZARD CONTAINER */
+/* WIZARD CONTAINER - Fontos a relatív pozíció az X gombnak */
 .wizard-container {
+  position: relative;
   max-width: 1000px;
   margin: 0 auto;
   background: #fff;
@@ -199,7 +196,27 @@ export default defineComponent({
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* HEADER */
+/* BEZÁRÓ GOMB STÍLUSA */
+.close-btn {
+  position: absolute;
+  top: 15px;
+  right: 20px;
+  background: transparent;
+  border: none;
+  font-size: 28px;
+  color: #aaa;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.2s;
+  z-index: 10;
+}
+
+.close-btn:hover {
+  color: #dc3545;
+}
+
+/* HEADER ÉS EGYÉB ELEMEK (Változatlanul) */
 .wizard-header-custom {
   display: flex;
   align-items: center;
@@ -207,81 +224,20 @@ export default defineComponent({
   margin-bottom: 40px;
   padding: 0 10px;
 }
+/* ... A többi stílusod marad változatlanul ... */
 
-.step-item {
-  display: flex;
-  align-items: center;
-  flex: 1;
-}
-
-.step-item:last-child {
-  flex: 0;
-}
-
-.step-circle {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background-color: #e0e0e0;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  font-size: 14px;
-  margin-right: 10px;
-  transition: background-color 0.3s ease;
-}
-
-.step-label {
-  color: #999;
-  font-weight: 500;
-  font-size: 14px; 
-  margin-right: 15px;
-  white-space: nowrap;
-}
-
-.step-line {
-  flex: 1;
-  height: 2px;
-  background-color: #e0e0e0;
-  margin-right: 15px;
-}
-
-.step-item.active .step-circle {
-  background-color: #007bff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
-}
-.step-item.active .step-label {
-  color: #000;
-  font-weight: bold;
-}
-
-.step-item.completed .step-circle {
-  background-color: #28a745;
-}
-.step-item.completed .step-label {
-  color: #28a745;
-}
-.step-item.completed .step-line {
-  background-color: #28a745; 
-}
-
-/* TARTALOM */
-.wizard-content {
-  min-height: 300px;
-  margin-bottom: 20px;
-}
-
-/* GOMBOK */
-.wizard-footer {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 30px;
-  padding-top: 20px;
-  border-top: 1px solid #eee;
-}
-
+.step-item { display: flex; align-items: center; flex: 1; }
+.step-item:last-child { flex: 0; }
+.step-circle { width: 32px; height: 32px; border-radius: 50%; background-color: #e0e0e0; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; margin-right: 10px; transition: background-color 0.3s ease; }
+.step-label { color: #999; font-weight: 500; font-size: 14px; margin-right: 15px; white-space: nowrap; }
+.step-line { flex: 1; height: 2px; background-color: #e0e0e0; margin-right: 15px; }
+.step-item.active .step-circle { background-color: #007bff; box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2); }
+.step-item.active .step-label { color: #000; font-weight: bold; }
+.step-item.completed .step-circle { background-color: #28a745; }
+.step-item.completed .step-label { color: #28a745; }
+.step-item.completed .step-line { background-color: #28a745; }
+.wizard-content { min-height: 300px; margin-bottom: 20px; }
+.wizard-footer { display: flex; justify-content: space-between; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
 .btn-primary { background: #007bff; color: white; padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
 .btn-secondary { background: #6c757d; color: white; padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
 .btn-success { background: #28a745; color: white; padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }

@@ -5,13 +5,13 @@
     <div class="content-width">
       <div class="settings-box">
         <div class="form-row">
-          <label for="pipelineName">Pipeline Name:</label>
+          <label for="pipelineName">Job Name:</label>
           <input 
             v-model="pipelineName" 
             type="text" 
             id="pipelineName" 
             class="form-control"
-            placeholder="Enter pipeline name" 
+            placeholder="Enter the name" 
             required 
           />
         </div>

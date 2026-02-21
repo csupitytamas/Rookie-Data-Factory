@@ -2,7 +2,7 @@
   <div class="history-page">
     <div class="header">
       <h2>Execution History</h2>
-      <button @click="refreshHistory" class="btn-refresh">🔄</button>
+      <button @click="refreshHistory" class="btn-refresh">Refresh</button>
     </div>
 
     <div v-if="loading" class="loading-state">
@@ -39,7 +39,7 @@
             </td>
             <td>
                <button @click="viewLogs(item.id)" class="btn-logs">
-                 Report from the job
+                 Report 🧾
                </button>
             </td>
           </tr>
