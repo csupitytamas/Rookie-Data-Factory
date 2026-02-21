@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import sqlalchemy as sa
 import os
 import logging
+import pendulum  # Az Airflow beépített időzóna kezelője
 
 # Logolás beállítása
 logger = logging.getLogger("airflow.task")
@@ -11,6 +12,22 @@ logger = logging.getLogger("airflow.task")
 # Adatbázis kapcsolat
 db_url = os.getenv("DB_URL", "postgresql+psycopg2://postgres:admin123@host.docker.internal:5433/ETL")
 engine = sa.create_engine(db_url)
+
+# --- IDŐZÓNA LEKÉRÉSE A SETTINGS-BŐL ---
+def get_user_timezone():
+    try:
+        with engine.connect() as conn:
+            # A settings_model.py alapján a tábla neve 'system_settings'
+            query = sa.text("SELECT timezone FROM system_settings LIMIT 1")
+            result = conn.execute(query).fetchone()
+            if result and result[0]:
+                return result[0]
+    except Exception as e:
+        print(f"⚠️ Could not fetch timezone from DB, falling back to Europe/Budapest: {e}")
+    return "Europe/Budapest" # Alapértelmezett érték, ha az adatbázis még üres
+
+user_tz_name = get_user_timezone()
+local_tz = pendulum.timezone(user_tz_name)
 
 default_args = {
     'owner': 'airflow',
@@ -28,10 +45,8 @@ def create_dag_structure(dag, pipeline_data):
     from logic.transform import transform_data
     from logic.load import load_data
 
-    # A paraméterek kinyerése (biztonságosan)
     params = pipeline_data.get('parameters') or {}
     
-    # 1. Extract Task - ITT A LÉNYEG: Átadjuk a paramétereket!
     extract_task = PythonOperator(
         task_id=f"extract_data_{pipeline_data['id']}",
         python_callable=extract_data,
@@ -44,7 +59,6 @@ def create_dag_structure(dag, pipeline_data):
         dag=dag,
     )
 
-    # 2. Create Table Task
     create_task = PythonOperator(
         task_id=f"create_table_{pipeline_data['id']}",
         python_callable=create_table,
@@ -52,7 +66,6 @@ def create_dag_structure(dag, pipeline_data):
         dag=dag,
     )
 
-    # 3. Transform Task
     transform_task = PythonOperator(
         task_id=f"transform_data_{pipeline_data['id']}",
         python_callable=transform_data,
@@ -60,7 +73,6 @@ def create_dag_structure(dag, pipeline_data):
         dag=dag,
     )
 
-    # 4. Load Task
     load_task = PythonOperator(
         task_id=f"load_data_{pipeline_data['id']}",
         python_callable=load_data,
@@ -68,27 +80,21 @@ def create_dag_structure(dag, pipeline_data):
         dag=dag,
     )
 
-    # Sorrend: Extract -> Create -> Transform -> Load
     extract_task >> create_task >> transform_task >> load_task
 
 # Pipeline-ok betöltése és DAG generálás
 try:
     with engine.connect() as conn:
-        # A te adatbázisodban 'etlconfig' a tábla neve
         query = sa.text("SELECT * FROM etlconfig")
         pipelines = conn.execute(query).mappings().all()
 
-    print(f"✅ [ETL Generator] Found {len(pipelines)} pipelines in 'etlconfig'.")
-
     for pipeline in pipelines:
         try:
-            # DAG ID az adatbázisból (pl. pii_v1_d29c7ccb)
             dag_id = pipeline['dag_id']
             if not dag_id:
                 safe_name = "".join([c if c.isalnum() else "_" for c in pipeline['pipeline_name']])
                 dag_id = f"etl_generated_{pipeline['id']}_{safe_name}"
 
-            # Ütemezés
             schedule = pipeline.get('schedule', 'daily')
             if schedule == 'custom' and pipeline.get('custom_time'):
                 hour, minute = pipeline['custom_time'].split(':')
@@ -103,17 +109,14 @@ try:
                 description=f"JOB for {pipeline['pipeline_name']}",
                 default_args=default_args,
                 schedule_interval=schedule_interval,
-                start_date=datetime(2025, 1, 1),
+                # A start_date-hez hozzáadjuk a beállított időzónát
+                start_date=datetime(2025, 1, 1, tzinfo=local_tz),
                 catchup=False,
                 tags=['JOB', pipeline.get('source', 'unknown')]
             )
 
-            # Konvertáljuk dict-é, hogy módosítható legyen
             create_dag_structure(dag, dict(pipeline))
-
-            # Regisztrálás
             globals()[dag_id] = dag
-            print(f"  --> Registered DAG: {dag_id}")
 
         except Exception as e:
             print(f"❌ Failed to generate DAG for pipeline {pipeline.get('id')}: {e}")

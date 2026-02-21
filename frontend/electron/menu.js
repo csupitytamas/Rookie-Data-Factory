@@ -22,7 +22,7 @@ function createMenu(mainWindow) {
             label: "Projects",
             submenu: [
                 {
-                    label: "Create new a job",
+                    label: "Create workflow",
                     click: () => {
                         if (mainWindow) {
                             mainWindow.webContents.send("navigate", "/create-etl");

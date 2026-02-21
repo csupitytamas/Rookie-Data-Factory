@@ -6,7 +6,18 @@
       <div class="settings-box">
         
         <div class="form-row">
-          <label>Update Mode:</label>
+          <div class="label-with-tooltip">
+            <label>Update Mode:</label>
+            <div class="tooltip-wrapper">
+              <span class="hint-icon">💡</span>
+              <div class="tooltip-content">
+                <b>Append:</b> Adds new records to existing table.<br>
+                <b>Overwrite:</b> Replaces the existing table.<br>
+                <b>Upsert:</b> Updates existing records.
+              </div>
+            </div>
+          </div>
+          
           <select v-model="store.config.update_mode" class="form-control">
             <option value="append">Append</option>
             <option value="overwrite">Overwrite</option>
@@ -108,6 +119,75 @@ label {
   margin-bottom: 8px;
   color: #333;
 }
+
+/* ÚJ TOOLTIP STÍLUSOK */
+.label-with-tooltip {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.label-with-tooltip label {
+  margin-bottom: 0; /* A flex container rendezi, nem kell extra margó */
+}
+
+.tooltip-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  cursor: help;
+}
+
+.hint-icon {
+  font-size: 1.1em;
+  opacity: 0.6;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.tooltip-wrapper:hover .hint-icon {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.tooltip-content {
+  visibility: hidden;
+  width: 280px;
+  background-color: #2c3e50; 
+  color: #fff;
+  text-align: left;
+  border-radius: 6px;
+  padding: 12px;
+  position: absolute;
+  z-index: 100;
+  bottom: 150%;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s, visibility 0.3s;
+  font-size: 0.85rem;
+  font-weight: normal;
+  line-height: 1.4;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  pointer-events: none;
+}
+
+.tooltip-content::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -6px;
+  border-width: 6px;
+  border-style: solid;
+  border-color: #2c3e50 transparent transparent transparent;
+}
+
+.tooltip-wrapper:hover .tooltip-content {
+  visibility: visible;
+  opacity: 1;
+}
+/* TOOLTIP VÉGE */
 
 .form-control {
   width: 100%;

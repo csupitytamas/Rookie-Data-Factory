@@ -8,11 +8,9 @@
       <div class="form-group">
         <label>Time Zone:</label>
         <select v-model="settings.timezone" class="input-field">
-          <option value="UTC">UTC</option>
-          <option value="Europe/Budapest">Europe/Budapest (Budapest)</option>
-          <option value="Europe/London">Europe/London</option>
-          <option value="America/New_York">America/New_York</option>
-          <option value="Asia/Tokyo">Asia/Tokyo</option>
+          <option v-for="tz in timezones" :key="tz" :value="tz">
+            {{ tz.replace(/_/g, ' ') }}
+          </option>
         </select>
       </div>
 
@@ -47,6 +45,15 @@ import { ref, onMounted } from 'vue';
 import axios from 'axios';
 const API_URL = 'http://localhost:8000/etl/settings'; 
 
+// Időzónák lekérése a böngészőből (Intl API)
+const timezones = ref([]);
+try {
+  timezones.value = Intl.supportedValuesOf('timeZone');
+} catch (e) {
+  // Fallback megoldás arra a ritka esetre, ha a böngésző nem támogatná
+  timezones.value = ['UTC', 'Europe/Budapest', 'Europe/London', 'America/New_York', 'Asia/Tokyo'];
+}
+
 const settings = ref({
   timezone: 'Europe/Budapest',
   download_path: '' 
@@ -61,10 +68,16 @@ onMounted(async () => {
   try {
     const response = await axios.get(API_URL);
     if (response.data) {
+        // Ha valamiért olyan időzóna jön a backendből, ami nincs a listában, hozzáadjuk
+        if (response.data.timezone && !timezones.value.includes(response.data.timezone)) {
+          timezones.value.push(response.data.timezone);
+          timezones.value.sort();
+        }
         settings.value.timezone = response.data.timezone || 'Europe/Budapest';
         settings.value.download_path = response.data.download_path || '';
     }
   } catch (error) {
+    console.error("Hiba a beállítások betöltésekor:", error);
   } finally {
     loading.value = false;
   }
@@ -78,7 +91,8 @@ const selectFolder = async () => {
         settings.value.download_path = path;
       }
     } catch (err) {
-}
+      console.error("Hiba a mappa kiválasztásakor:", err);
+    }
   }
 };
 
@@ -87,7 +101,17 @@ const saveSettings = async () => {
   message.value = "";
   
   try {
+    // 1. Beállítások mentése a backend felé
     await axios.put(API_URL, settings.value);
+    
+    // 2. Mappák automatikus létrehozása az Electron segítségével
+    if (window.electron && window.electron.createDirectories && settings.value.download_path) {
+      const dirResult = await window.electron.createDirectories(settings.value.download_path);
+      if (dirResult && !dirResult.success) {
+        console.error("Hiba a mappák létrehozásakor:", dirResult.error);
+      }
+    }
+
     showMessage("Success!", true);
   } catch (error) {
     console.error("Save error:", error);

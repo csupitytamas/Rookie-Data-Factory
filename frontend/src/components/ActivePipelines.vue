@@ -28,6 +28,7 @@
 
 <script>
 import {getAllPipelines} from "@/api/pipeline";
+
 export default {
   name: "ActivePipelines",
   data() {
@@ -38,32 +39,32 @@ export default {
   created() {
     this.fetchPipelines();
   },
-methods: {
-  async fetchPipelines() {
-    try {
-      const response = await getAllPipelines();
-      this.pipelines = response.data;
-    } catch (error) {
-      console.error("Error fetching pipelines:", error);
-    }
-  },
-  configurePipeline(pipeline) {
-    this.$router.push({
-      path: "/edit-config",
-      query: { id: pipeline.id }
-    });
-  },
-  goBack() {
-    if (window.history.length > 1) {
-      this.$router.go(-1);
-    } else {
-      this.$router.push('/');
+  methods: {
+    async fetchPipelines() {
+      try {
+        const response = await getAllPipelines();
+        this.pipelines = response.data.sort((a, b) => b.id - a.id);
+
+      } catch (error) {
+        console.error("Error fetching pipelines:", error);
+      }
+    },
+    configurePipeline(pipeline) {
+      this.$router.push({
+        path: "/edit-config",
+        query: { id: pipeline.id }
+      });
+    },
+    goBack() {
+      if (window.history.length > 1) {
+        this.$router.go(-1);
+      } else {
+        this.$router.push('/');
+      }
     }
   }
-}
 };
 </script>
-
 <style scoped>
 .container {
   width: 80%;

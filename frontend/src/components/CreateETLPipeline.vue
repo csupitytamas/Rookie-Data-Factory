@@ -116,7 +116,7 @@ export default defineComponent({
     };
 
     const closeWizard = () => {
-      if (confirm("You going to exit. Are you sure?")) {
+      if (confirm("Do you want to exit?")) {
         store.reset(); 
         router.push('/'); 
       }
