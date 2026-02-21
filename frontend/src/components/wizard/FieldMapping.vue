@@ -1,7 +1,8 @@
 <template>
   <div class="form-layout">
     <h3>Field Mapping</h3>
-    <p v-if="loading">Loading fields...</p>
+    
+    <p v-if="loading" class="loading-text">Loading fields...</p>
     
     <draggable 
       v-else
@@ -9,13 +10,27 @@
       item-key="col" 
       class="draggable-list"
       handle=".drag-handle"
+      ghost-class="ghost-row"
     >
       <template #item="{ element: col, index }">
         <div class="mapping-row">
           <div class="mapping-header">
-            <span class="drag-handle">☰</span>
+            
+            <div class="drag-handle" title="Drag to reorder">
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="9" cy="12" r="1.5"></circle>
+                <circle cx="9" cy="5" r="1.5"></circle>
+                <circle cx="9" cy="19" r="1.5"></circle>
+                <circle cx="15" cy="12" r="1.5"></circle>
+                <circle cx="15" cy="5" r="1.5"></circle>
+                <circle cx="15" cy="19" r="1.5"></circle>
+              </svg>
+            </div>
+
+            <span class="row-number">{{ index + 1 }}.</span>
+            
             <span class="column-name">{{ col }}</span>
-            <button class="settings-btn" @click.prevent="toggleSettings(col)">⚙️</button>
+            <button class="settings-btn" @click.prevent="toggleSettings(col)" title="Settings">⚙️</button>
           </div>
 
           <div v-if="settingsOpen[col]" class="mapping-settings">
@@ -37,7 +52,7 @@
     </draggable>
 
     <div v-if="!loading && (!store.config.column_order || store.config.column_order.length === 0)">
-       <p style="color:red">Failed to load fields for this source.</p>
+       <p style="color:red; text-align: center; margin-top: 20px;">Failed to load fields for this source.</p>
     </div>
   </div>
 </template>
@@ -128,15 +143,145 @@ onMounted(async () => {
 });
 </script>
 
-<style scoped src="../styles/CreateETLPipeline.style.css"></style>
 <style scoped>
-.draggable-list { border: 1px solid #eee; padding: 5px; border-radius: 4px; background: #fff; }
-.mapping-row { border-bottom: 1px solid #f0f0f0; padding: 8px 5px; }
-.mapping-header { display: flex; align-items: center; justify-content: space-between; }
-.drag-handle { cursor: grab; margin-right: 10px; color: #888; font-size: 1.2em; }
-.column-name { flex-grow: 1; font-weight: 500; }
-.settings-btn { background: none; border: none; cursor: pointer; font-size: 1.2em; padding: 0 5px; }
-.mapping-settings { background: #f9f9f9; padding: 10px; margin-top: 5px; border-radius: 4px; border: 1px solid #eee; }
-.setting-item { margin-bottom: 5px; display: flex; align-items: center; gap: 10px; }
-.small-input { padding: 4px; font-size: 0.9em; width: 150px; }
+.form-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+h3 {
+  margin-bottom: 10px;
+}
+
+.info-banner {
+  width: 70%;
+  background-color: #e8f4fd;
+  border-left: 4px solid #007bff;
+  color: #004085;
+  padding: 10px 15px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  margin-bottom: 15px;
+  text-align: left;
+}
+
+.loading-text {
+  color: #666;
+  font-style: italic;
+}
+
+.draggable-list { 
+  width: 70%; 
+  border: 1px solid #ddd; 
+  padding: 10px; 
+  border-radius: 6px; 
+  background: #fff; 
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+
+.ghost-row {
+  opacity: 0.5;
+  background: #e2eefd !important;
+  border: 1px dashed #007bff;
+}
+
+.mapping-row { 
+  border-bottom: 1px solid #f0f0f0; 
+  padding: 10px 15px; 
+  background: #fafafa;
+  margin-bottom: 5px;
+  border-radius: 4px;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.mapping-row:hover {
+  background: #f1f1f1;
+}
+.mapping-row:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.mapping-header { 
+  display: flex; 
+  align-items: center; 
+}
+
+/* ÚJ DRAG HANDLE STÍLUS */
+.drag-handle { 
+  cursor: grab; 
+  color: #adb5bd; /* Világosabb szürke alapból */
+  width: 30px; 
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  transition: color 0.2s;
+}
+.drag-handle:hover {
+  color: #007bff; /* Egérráhúzáskor kék lesz */
+}
+.drag-handle:active {
+  cursor: grabbing;
+  color: #0056b3;
+}
+
+/* ERŐTELJESEBB SORSZÁM */
+.row-number {
+  width: 35px;
+  font-weight: 800; /* Vastagabb betű */
+  color: #343a40;  /* Sötétebb szín */
+  font-size: 1.05em;
+  text-align: left;
+}
+
+.column-name { 
+  flex-grow: 1; 
+  font-weight: 500; 
+  text-align: left;
+}
+
+.settings-btn { 
+  background: none; 
+  border: none; 
+  cursor: pointer; 
+  font-size: 1.2em; 
+  padding: 0; 
+  width: 30px; 
+  text-align: right; 
+  color: #555;
+  transition: transform 0.2s, color 0.2s;
+}
+.settings-btn:hover {
+  color: #007bff;
+  transform: scale(1.1);
+}
+
+.mapping-settings { 
+  background: #fff; 
+  padding: 12px; 
+  margin-top: 10px; 
+  border-radius: 4px; 
+  border: 1px solid #e0e0e0; 
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.setting-item { 
+  margin-bottom: 8px; 
+  display: flex; 
+  align-items: center; 
+  gap: 10px; 
+  font-size: 0.95em;
+}
+.setting-item:last-child {
+  margin-bottom: 0;
+}
+
+.small-input { 
+  padding: 4px 8px; 
+  font-size: 0.9em; 
+  width: 180px; 
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
 </style>

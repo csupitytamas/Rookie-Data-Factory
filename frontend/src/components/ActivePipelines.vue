@@ -7,7 +7,7 @@
       <tr>
         <th>Name</th>
         <th>Source</th>
-        <th>Config</th>
+        <th>Configuration</th>
       </tr>
       </thead>
       <tbody>

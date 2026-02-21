@@ -1,6 +1,6 @@
 <template>
   <div class="dashboard">
-    <h2>Overview</h2>
+    <h2>OVERVIEW DASHBOARD</h2>
     <div class="pipeline" v-for="pipeline in pipelines" :key="pipeline.id">
       <h3>{{ pipeline.name }}</h3>
       <p>Last successful run: <strong>{{ pipeline.lastRun }}</strong></p>

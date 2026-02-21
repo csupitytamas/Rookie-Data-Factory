@@ -1,62 +1,65 @@
 <template>
-  <div class="api-settings-container">
+  <div class="form-layout">
     <h3 class="title">API Settings ({{ store.source }})</h3>
 
-    <div v-if="loading" class="status-msg">
-      <p>Loading parameters...</p>
-    </div>
-
-    <div v-else-if="Object.keys(configSchema).length > 0" class="form-wrapper">
-      
-      <div v-for="(paramConfig, paramKey) in configSchema" :key="paramKey" class="custom-row">
-        
-        <label :for="`param-${paramKey}`" class="custom-label">
-          {{ paramConfig.friendly_name || paramConfig.label || paramKey }}
-          <span v-if="paramConfig.required" class="required">*</span>
-        </label>
-        
-        <p v-if="paramConfig.description" class="description">{{ paramConfig.description }}</p>
-
-        <div v-if="paramConfig.type === 'select'" class="input-wrapper">
-          <select
-            :id="`param-${paramKey}`"
-            v-model="store.config.parameters[paramKey]"
-            class="custom-input left-align"
-          >
-            <option value="" disabled selected>Please select...</option>
-            <option 
-              v-for="opt in paramConfig.options" 
-              :key="opt.value" 
-              :value="opt.value"
-            >
-              {{ opt.label }}
-            </option>
-          </select>
-        </div>
-
-        <div v-else-if="['number', 'integer'].includes(paramConfig.type)" class="input-wrapper">
-          <input
-            :id="`param-${paramKey}`"
-            type="number"
-            v-model.number="store.config.parameters[paramKey]"
-            class="custom-input center-align"
-          />
-        </div>
-
-        <div v-else class="input-wrapper">
-          <input
-            :id="`param-${paramKey}`"
-            type="text"
-            v-model="store.config.parameters[paramKey]"
-            class="custom-input center-align"
-          />
-        </div>
-
+    <div class="content-width">
+      <div v-if="loading" class="status-msg">
+        <p>Loading parameters...</p>
       </div>
-    </div>
 
-    <div v-else class="status-msg">
-      <p>No extra settings available for this source.</p>
+      <div v-else-if="Object.keys(configSchema).length > 0" class="form-wrapper">
+        <div class="settings-box">
+          <div v-for="(paramConfig, paramKey) in configSchema" :key="paramKey" class="form-row">
+            
+            <label :for="`param-${paramKey}`">
+              {{ paramConfig.friendly_name || paramConfig.label || paramKey }}
+              <span v-if="paramConfig.required" class="required">*</span>
+            </label>
+            
+            <p v-if="paramConfig.description" class="description-text">{{ paramConfig.description }}</p>
+
+            <div v-if="paramConfig.type === 'select'">
+              <select
+                :id="`param-${paramKey}`"
+                v-model="store.config.parameters[paramKey]"
+                class="form-control"
+              >
+                <option value="" disabled selected>Please select...</option>
+                <option 
+                  v-for="opt in paramConfig.options" 
+                  :key="opt.value" 
+                  :value="opt.value"
+                >
+                  {{ opt.label }}
+                </option>
+              </select>
+            </div>
+
+            <div v-else-if="['number', 'integer'].includes(paramConfig.type)">
+              <input
+                :id="`param-${paramKey}`"
+                type="number"
+                v-model.number="store.config.parameters[paramKey]"
+                class="form-control"
+              />
+            </div>
+
+            <div v-else>
+              <input
+                :id="`param-${paramKey}`"
+                type="text"
+                v-model="store.config.parameters[paramKey]"
+                class="form-control"
+                placeholder="Enter value..."
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="settings-box status-msg">
+        <p>No parameters available for this source.</p>
+      </div>
     </div>
   </div>
 </template>
@@ -117,87 +120,79 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.api-settings-container {
-  width: 100%;
+/* KONZISZTENS 70%-OS ELRENDEZÉS */
+.form-layout {
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Extra hely alul, hogy a menünek legyen helye */
-  padding-bottom: 300px; 
+  width: 100%;
 }
 
-.title {
-  text-align: center;
+.content-width {
+  width: 70%;
+  min-width: 350px;
+  /* Extra hely alul a lenyílóknak */
+  padding-bottom: 200px;
+}
+
+h3 {
   margin-bottom: 25px;
+  text-align: center;
   color: #333;
 }
 
-.form-wrapper {
+/* KÁRTYA STÍLUS */
+.settings-box {
+  background: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
   width: 100%;
-  max-width: 600px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.custom-row {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  width: 100%;
-}
-
-.custom-label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 8px;
-  color: #333;
-  width: 100%;
-  text-align: center;
-}
-
-/* --- ÚJ WRAPPER STRUKTÚRA --- */
-.input-wrapper {
-  /* Ez a doboz felel azért, hogy KÖZÉPEN legyen az űrlapon */
-  width: 100%;
-  max-width: 400px; 
-  margin: 0 auto;
-}
-
-.custom-input {
-  /* Az input kitölti a wrappert */
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 14px;
-  background-color: white;
   box-sizing: border-box;
 }
 
-/* Selectnél: BALRA igazítjuk a szöveget */
-/* Ez KÖTELEZŐ ahhoz, hogy a menü a mező bal szélétől nyíljon lefelé */
-.left-align {
+.form-row {
+  margin-bottom: 25px;
   text-align: left;
-  cursor: pointer;
 }
 
-/* Sima inputnál: maradhat középen, az szebb */
-.center-align {
-  text-align: center;
+.form-row:last-child {
+  margin-bottom: 0;
 }
 
-.custom-input:focus {
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #333;
+  font-size: 15px;
+}
+
+/* MEZŐ STÍLUSOK */
+.form-control {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 15px;
+  background-color: #fff;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-control:focus {
   border-color: #007bff;
   outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
 }
 
-.description {
+.description-text {
   font-size: 0.85em;
   color: #666;
-  margin-bottom: 8px;
-  margin-top: -4px;
+  margin-bottom: 10px;
+  margin-top: -2px;
+  line-height: 1.4;
 }
 
 .required {
@@ -207,11 +202,12 @@ onMounted(() => {
 
 .status-msg {
   text-align: center;
-  padding: 20px;
+  padding: 40px;
   color: #666;
   font-style: italic;
-  background: #f8f9fa;
-  border-radius: 8px;
-  width: 100%;
+}
+
+.mt-3 {
+  margin-top: 20px;
 }
 </style>
