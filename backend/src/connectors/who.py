@@ -1,21 +1,27 @@
-import requests
 from typing import Dict, Any, List
-from .base import BaseConnector
 import re
+import logging
+from .base import BaseConnector
+
+logger = logging.getLogger(__name__)
 
 class WHOConnector(BaseConnector):
     def __init__(self, **kwargs):
-        base_url = kwargs.pop("base_url", "https://ghoapi.azureedge.net/api")
-        super().__init__(base_url=base_url, **kwargs)
-        # Ezt megtarthatjuk tájékoztató jelleggel, de nem szűrünk vele szigorúan
+        conn_id = kwargs.pop("conn_id", "who_api")
+        # Beadjuk a fallback URL-t a backend kedvéért
+        base_url_fallback = kwargs.pop("base_url_fallback", "https://ghoapi.azureedge.net/api")
+        super().__init__(conn_id=conn_id, base_url_fallback=base_url_fallback, **kwargs)
+        
+        self.valid_entities = []
+        # Most már a Backend is biztonságosan le tudja futtatni a fallback segítségével!
         try:
             self.valid_entities = self._load_valid_entities()
-        except:
-            self.valid_entities = []
+        except Exception as e:
+            logger.warning(f"Nem sikerült betölteni a WHO entitásokat: {e}")
 
     def _load_valid_entities(self) -> List[str]:
-        """Lekéri a WHO metaadat XML-t."""
-        xml = requests.get(f"{self.base_url}/$metadata", timeout=10).text
+        response = self.make_request("$metadata")
+        xml = response.text
         return re.findall(r'<EntitySet Name="([^"]+)"', xml)
 
     def resolve_entity(self, indicator: str) -> str:
@@ -30,14 +36,13 @@ class WHOConnector(BaseConnector):
 
     def get_filter_options(self):
         """Visszaadja az összes elérhető indikátort a frontendnek."""
-        url = f"{self.base_url}/Indicator"
-        resp = self.make_request(url)
+        # Nincs f"{self.base_url}/Indicator", csak "Indicator"
+        resp = self.make_request("Indicator")
         indicators_list = resp.json().get("value", [])
 
         options = []
         for item in indicators_list:
             code = item.get("IndicatorCode")
-            # ELTÁVOLÍTVA: a szigorú 'if code in self.valid_entities' szűrés
             options.append({
                 "label": item.get("IndicatorName", code),
                 "value": code
@@ -60,8 +65,8 @@ class WHOConnector(BaseConnector):
 
         entity = self.resolve_entity(indicator)
         
-        # Ha a Fact táblát használjuk, hozzáadjuk az OData szűrést az indikátorra
-        url = f"{self.base_url}/{entity}"
+        # CSAK A RELATÍV ÚTVONAL: nem kell a base_url
+        url = f"{entity}"
         if entity == "Fact":
             url += f"?$filter=IndicatorCode eq '{indicator}'"
             
@@ -85,6 +90,7 @@ class WHOConnector(BaseConnector):
         return out
 
     def fetch(self, endpoint: str, parameters: Dict[str, Any], **kwargs):
+        # A build_url most már a relatív URL-t adja vissza
         url = self.build_url(endpoint, parameters)
         resp = self.make_request(url)
         return self.parse_response(resp)

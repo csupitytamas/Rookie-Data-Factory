@@ -1,114 +1,149 @@
 from typing import List, Dict, Any, Optional
+import logging
 import requests
 from .base import BaseConnector
 
+logger = logging.getLogger(__name__)
 
 class OECDConnector(BaseConnector):
     """
-    OECD API connector.
-    OECD.Stat API dokumentáció: https://stats.oecd.org/
+    OECD API connector - Teljesen automatizált indikátor-listázással.
     """
 
     def __init__(self, **kwargs):
-        base_url = kwargs.pop("base_url", "https://stats.oecd.org/SDMX-JSON/data")
-        super().__init__(base_url=base_url, **kwargs)
-        self.session.headers.update({
-            "Accept": "application/json"
-        })
+        conn_id = kwargs.pop("conn_id", "oecd_api")
+        base_url_fallback = kwargs.pop("base_url_fallback", "https://sdmx.oecd.org/public/rest")
+        super().__init__(conn_id=conn_id, base_url_fallback=base_url_fallback, **kwargs)
+
+    def get_filter_options(self) -> dict:
+            """
+            Az összes kért indikátor listája. 
+            A build_url automatikusan ki fogja szűrni a lényeget, ha URL-t másolsz be.
+            """
+            options = [
+                {
+                    "label": "Agri-environmental indicators: all data", 
+                    "value": "OECD.TAD.ARP,DSD_AGRI_ENV@DF_AEI,1.1/.A.TOTAGR_LAND...."
+                },
+                {
+                    "label": "Trust, security and dignity - government at a glance indicators", 
+                    "value": "https://sdmx.oecd.org/public/rest/data/OECD.GOV.GIP,DSD_GOV_INT@DF_GOV_TDG_2025,1.1/A.......?startPeriod=2019"
+                },
+                {
+                    "label": "Satisfaction with public services - government at a glance indicators", 
+                    "value": "OECD.GOV.GIP,DSD_GOV_INT@DF_GOV_SPS_2025,1.1/A.AUS......"
+                },
+                {
+                    "label": "Adequacy of minimum income benefits", 
+                    "value": "OECD.ELS.JAI,DSD_TAXBEN_IA@DF_IA,1.0/..PT_INC_DISP_HH_MEDIAN.S_C0+C_C2...YES+NO.A"
+                },
+                {
+                    "label": "Annual net and gross earnings of minimum wage earners", 
+                    "value": "OECD.ELS.JAI,DSD_TAXBEN_IMW@DF_IMW,1.0/.GFE+NFI.XDC+PT_INC_DISP_HH_TP_REF_WG_A.S_C0+C_C2.._Z+NOEARN_UNEMP_WO_CONBEN.YES+NO.YES+NO.FT_ISICCK.MW_DATE.A"
+                },
+                {
+                    "label": "Average annual hours actually worked per worker", 
+                    "value": "OECD.ELS.SAE,DSD_HW@DF_AVG_ANN_HRS_WKD,1.0/AUS+AUT+BEL+CAN+CHL+COL+CRI+CZE+DNK+EST+FIN+FRA+DEU+GRC+HUN+ISL+IRL+ISR+ITA+JPN+KOR+LVA+LTU+LUX+MEX+NLD+NZL+NOR+POL+PRT+SVK+SVN+ESP+SWE+CHE+TUR+GBR+USA+OECD........_T...."
+                },
+                {
+                    "label": "Average annual wages", 
+                    "value": "OECD.ELS.SAE,DSD_EARNINGS@AV_AN_WAGE,1.0/all"
+                },
+                {
+                    "label": "Trade in Value Added (TiVA) 2025 edition: Origin of value added in final demand", 
+                    "value": "OECD.STI.PIE,DSD_TIVA_FDVA@DF_FDVA,1.1/.._T.W._T..A"
+                }
+            ]
+
+            return {
+                "indicator": {
+                    "type": "select",
+                    "required": True,
+                    "label": "OECD Adathalmaz",
+                    "description": "Válassz a listából, vagy másolj be egy OECD API URL-t",
+                    "options": options
+                }
+            }
 
     def build_url(self, endpoint: str, parameters: Dict[str, Any]) -> str:
         """
-        OECD URL építése.
-        Példa: /{dataset}/{filter}?contentType=json
+        OECD SDMX REST URL építése tiszta azonosítóból vagy teljes URL-ből.
         """
-        dataset = parameters.get("dataset")
-        if not dataset:
-            raise ValueError("OECD connector requires 'dataset' parameter")
+        indicator = parameters.get("indicator")
+        if not indicator:
+            raise ValueError("OECD connector requires 'indicator' parameter.")
 
-        # OECD API formátum: /{dataset}/{filter}
-        filter_str = parameters.get("filter", "all")
+        # Tisztítás: ha teljes URL-t kapunk, kivágjuk a lényeget
+        if "http" in indicator and "/data/" in indicator:
+            indicator = indicator.split("/data/")[1]
+            if "?" in indicator:
+                indicator = indicator.split("?")[0]
         
-        url = f"{self.base_url}/{dataset}/{filter_str}"
+        # Végpont összeállítása
+        url = f"data/{indicator}"
         
-        # Query paraméterek
-        params = {
-            "contentType": "json"
-        }
+        # Minden dimenziót kérünk a helyes parzoláshoz
+        params = {"dimensionAtObservation": "AllDimensions"}
         
-        if "startTime" in parameters:
-            params["startTime"] = parameters["startTime"]
-        if "endTime" in parameters:
-            params["endTime"] = parameters["endTime"]
+        # UI paraméterek átadása
+        if "startPeriod" in parameters: params["startPeriod"] = parameters["startPeriod"]
+        if "endPeriod" in parameters: params["endPeriod"] = parameters["endPeriod"]
 
         query_string = "&".join([f"{k}={v}" for k, v in params.items()])
         return f"{url}?{query_string}"
 
-    def parse_response(self, response: requests.Response) -> List[Dict[str, Any]]:
-        """
-        OECD SDMX-JSON válasz parzolása.
-        Az OECD SDMX formátumot használ, ami komplex struktúrát tartalmaz.
-        """
-        data = response.json()
-        
-        if not data or "dataSets" not in data:
+    def parse_response(self, response) -> List[Dict[str, Any]]:
+        # (A korábbi, már jól működő golyóálló parser kódod marad itt változatlanul...)
+        try:
+            data = response.json()
+        except:
             return []
+        
+        root = data.get("data", data)
+        datasets = root.get("dataSets", [])
+        if not datasets: return []
 
-        # SDMX struktúra feldolgozása
-        datasets = data.get("dataSets", [])
-        structure = data.get("structure", {})
+        if "structures" in root and isinstance(root["structures"], list) and len(root["structures"]) > 0:
+            structure = root["structures"][0]
+        else:
+            structure = root.get("structure", {})
+            
         dimensions = structure.get("dimensions", {})
-        observations = datasets[0].get("observations", {}) if datasets else {}
+        dimensions_list = []
+        if isinstance(dimensions, list):
+            dimensions_list = dimensions
+        elif isinstance(dimensions, dict):
+            for key in ["dataset", "series", "observation"]:
+                val = dimensions.get(key)
+                if val: dimensions_list.extend(val)
 
-        # Dimenziók értékeinek kinyerése
-        dim_keys = list(dimensions.keys())
         dim_values = {}
-        for dim_key in dim_keys:
-            dim_values[dim_key] = [
-                item.get("id", "") for item in dimensions.get(dim_key, {}).get("values", [])
-            ]
+        dim_keys = []
+        for dim in dimensions_list:
+            dim_id = dim.get("id", "unknown")
+            dim_keys.append(dim_id)
+            dim_values[dim_id] = [val.get("id", val.get("name", "")) for val in dim.get("values", [])]
 
-        # Normalizálás
         normalized = []
+        observations = datasets[0].get("observations", {})
+        
         for obs_key, obs_value in observations.items():
-            # Az obs_key egy index vagy kulcs, ami a dimenziók kombinációját jelöli
-            # Az OECD API-ban ez általában egy szám vagy tuple
-            
             record = {}
-            
-            # Dimenziók értékeinek hozzáadása
+            parts = str(obs_key).split(":")
             for i, dim_key in enumerate(dim_keys):
-                if isinstance(obs_key, (list, tuple)) and i < len(obs_key):
-                    idx = obs_key[i]
-                    if idx < len(dim_values[dim_key]):
+                if i < len(parts):
+                    idx = int(parts[i]) if parts[i].isdigit() else 0
+                    if idx < len(dim_values.get(dim_key, [])):
                         record[dim_key.lower()] = dim_values[dim_key][idx]
-                elif isinstance(obs_key, str):
-                    # Ha string kulcs, akkor parse-olni kell
-                    parts = obs_key.split(":")
-                    if i < len(parts):
-                        idx = int(parts[i]) if parts[i].isdigit() else 0
-                        if idx < len(dim_values[dim_key]):
-                            record[dim_key.lower()] = dim_values[dim_key][idx]
-
-            # Érték hozzáadása
-            if isinstance(obs_value, list) and len(obs_value) > 0:
-                record["value"] = obs_value[0]
-            else:
-                record["value"] = obs_value
-
+            
+            val = obs_value[0] if isinstance(obs_value, list) and len(obs_value) > 0 else obs_value
+            record["value"] = val
             normalized.append(record)
 
         return normalized
 
-    def fetch(
-        self,
-        endpoint: str,
-        parameters: Dict[str, Any],
-        **kwargs
-    ) -> List[Dict[str, Any]]:
-        """
-        OECD adatok lekérése.
-        """
+    def fetch(self, endpoint: str, parameters: Dict[str, Any], **kwargs) -> List[Dict[str, Any]]:
         url = self.build_url(endpoint, parameters)
-        response = self.make_request(url)
+        headers = {"Accept": "application/vnd.sdmx.data+json; charset=utf-8; version=2.0, application/json"}
+        response = self.make_request(url, headers=headers)
         return self.parse_response(response)
-
