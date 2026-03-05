@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # 1. Az adatbázis (ezt használja a backend és az Airflow is)
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow_password
+      POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+
+  # 2. A FastAPI Backend
+  backend:
+    build: ./backend
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://airflow:airflow_password@postgres:5432/airflow
+      - AIRFLOW_API_URL=http://airflow-webserver:8080/api/v1
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # 3. A Vue.js Frontend
+  frontend:
+    build: ./frontend
+    restart: always
+    ports:
+      - "5173:80"  # A 80-as belső Nginx portot kivezetjük az 5173-ra (amit megszoktál)
+    depends_on:
+      - backend
+
+  # 4. Airflow Inicializáló (csak egyszer fut le induláskor)
+  airflow-init:
+    build: ./airflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow_password@postgres:5432/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    command: version
+
+  # 5. Airflow Webes Felület
+  airflow-webserver:
+    build: ./airflow
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow_password@postgres:5432/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+    command: webserver
+
+  # 6. Airflow Ütemező (A "motor")
+  airflow-scheduler:
+    build: ./airflow
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow_password@postgres:5432/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+    command: scheduler
+
+volumes:
+  postgres_data: # Adatbázis fájlok tartós tárolása
