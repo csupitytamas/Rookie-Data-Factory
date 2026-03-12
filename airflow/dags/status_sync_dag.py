@@ -7,7 +7,7 @@ default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
     'email_on_failure': True,
-    'email': ['your.email@example.com'],  # ide mehetnek a hibák
+    'email': ['your.email@example.com'],
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }
@@ -17,7 +17,7 @@ dag = DAG(
     default_args=default_args,
     description='Pipeline status sync from Airflow to database',
     schedule_interval='*/2 * * * *',
-    start_date=datetime(2025, 6, 4),    # indulási dátum
+    start_date=datetime(2025, 6, 4),
     catchup=False,
     max_active_runs=1,
 )

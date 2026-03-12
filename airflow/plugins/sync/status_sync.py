@@ -7,13 +7,12 @@ from sync.api_client import get_next_scheduled_run
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import re
 
-AIRFLOW_DB_URL = "postgresql+psycopg2://airflow:airflow@postgres:5432/airflow"
+AIRFLOW_DB_URL = "postgresql+psycopg2://airflow:airflow_password@postgres:5432/airflow"
 airflow_engine = create_engine(AIRFLOW_DB_URL)
 AirflowSession = sessionmaker(bind=airflow_engine)
 
 
-
-ETL_DB_URL = "postgresql+psycopg2://postgres:admin123@host.docker.internal:5433/ETL"
+ETL_DB_URL = "postgresql+psycopg2://airflow:airflow_password@postgres:5432/airflow"
 etl_engine = create_engine(ETL_DB_URL)
 ETLSession = sessionmaker(bind=etl_engine)
 metadata = MetaData()
@@ -112,15 +111,6 @@ def update_pipeline_status():
 
                 etl_session.execute(stmt)
 
-                # Insert status_history tábla
-                history_stmt = insert(status_history).values(
-                    etlconfig_id=etlconfig_id,
-                    status=current_status,
-                    execution_time=execution_time,
-                    changed_at=datetime.utcnow(),
-                    message=str(latest_run.external_trigger)
-                )
-
                 upsert_stmt = pg_insert(status).values(
                     etlconfig_id=etlconfig_id,
                     current_status=current_status,
@@ -145,7 +135,7 @@ def update_pipeline_status():
                     etlconfig_id=etlconfig_id,
                     status=current_status,
                     execution_time=execution_time,
-                    changed_at=datetime.utcnow(),
+                    changed_at=datetime.now(),
                     message=str(latest_run.external_trigger)
                 )
 

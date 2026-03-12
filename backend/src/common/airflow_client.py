@@ -1,13 +1,13 @@
 import requests
+import time
 from requests.auth import HTTPBasicAuth
 
 # --- KONFIGURÁCIÓ ---
 # Egységesítjük: mostantól AIRFLOW_URL-t használunk mindenhol
-AIRFLOW_URL = "http://localhost:8080/api/v1"
-USERNAME = "airflow"
-PASSWORD = "airflow"
-AUTH = HTTPBasicAuth(USERNAME, PASSWORD) # Ezt is definiáljuk, hogy használható legyen
-
+AIRFLOW_URL = "http://airflow-webserver:8080/api/v1"
+USERNAME = "admin" 
+PASSWORD = "admin"
+AUTH = HTTPBasicAuth(USERNAME, PASSWORD)
 # --------------------
 
 def pause_airflow_dag(dag_id):
@@ -206,3 +206,31 @@ def get_dag_run_logs(dag_id: str, execution_date: str) -> str:
 
     except Exception as e:
         return f"Error connecting to Airflow: {str(e)}"
+    
+def trigger_airflow_dag_with_retry(dag_id: str, retries=5, delay=10):
+    """
+    Megpróbálja elindítani a DAG-ot. Ha 404-et kap, vár, 
+    mert az Airflow ütemezőjének idő kell a fájlok feldolgozásához.
+    """
+    url = f"{AIRFLOW_URL}/dags/{dag_id}/dagRuns"
+    
+    for i in range(retries):
+        try:
+            # Először megpróbáljuk unpause-olni (ez is 404-et dobhat, ha még nem látja)
+            unpause_airflow_dag(dag_id)
+            
+            response = requests.post(url, auth=AUTH, json={})
+            if response.status_code in [200, 201]:
+                print(f"🚀 DAG {dag_id} sikeresen elindítva a(z) {i+1}. próbálkozásra.")
+                return response.json()
+            
+            if response.status_code == 404:
+                print(f"⏳ Az Airflow még nem látja a(z) {dag_id}-t. Várakozás... ({i+1}/{retries})")
+                time.sleep(delay)
+            else:
+                break # Más típusú hiba esetén nem próbálkozunk tovább
+        except Exception as e:
+            print(f"Hiba: {e}")
+            time.sleep(delay)
+            
+    return None

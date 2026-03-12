@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String, DateTime, Interval, ForeignKey, func
+from sqlalchemy import Column, Integer, String, TIMESTAMP, Interval, ForeignKey, DateTime, func
 from sqlalchemy.orm import relationship
-from .etl_config_model import ETLConfig   # vagy a helyes útvonalon, ha külön package!
+from src.models.etl_config_model import ETLConfig 
 from src.database.connection import Base
+from datetime import datetime
 
 class Status(Base):
     __tablename__ = 'status'
@@ -11,10 +12,10 @@ class Status(Base):
     last_successful_run = Column(DateTime)
     next_scheduled_run = Column(DateTime)
     execution_time = Column(Interval)
+    # Itt a func.current_timestamp() miatt kell a 'func' import
     updated_at = Column(DateTime, default=func.current_timestamp())
 
-    # ORM kapcsolat a confighoz – így statusból könnyen eléred a pipeline metaadatait is
-    etlconfig = relationship(ETLConfig, backref="status", uselist=False)
+    etlconfig = relationship("ETLConfig", backref="status", uselist=False)
 
     def __repr__(self):
         return (
@@ -22,3 +23,13 @@ class Status(Base):
             f"last_successful_run={self.last_successful_run}, next_scheduled_run={self.next_scheduled_run}, "
             f"execution_time={self.execution_time})>"
         )
+    
+class StatusHistory(Base):
+    __tablename__ = "status_history"
+    id = Column(Integer, primary_key=True, index=True)
+    etlconfig_id = Column(Integer)
+    status = Column(String)
+    # Itt a TIMESTAMP miatt kell a 'TIMESTAMP' import
+    changed_at = Column(TIMESTAMP, default=datetime.utcnow)
+    execution_time = Column(Interval)
+    message = Column(String)

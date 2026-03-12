@@ -51,7 +51,7 @@ def get_dashboard(db: Session = Depends(get_db)):
 @router.get("/dashboard/pipeline/{pipeline_id}/data")
 def get_pipeline_full_data(pipeline_id: int, db: Session = Depends(get_db)):
     pipeline = db.query(ETLConfig).filter(ETLConfig.id == pipeline_id).first()
-    
+
     if not pipeline or not pipeline.target_table_name:
         return {"data": []}
 
@@ -59,7 +59,7 @@ def get_pipeline_full_data(pipeline_id: int, db: Session = Depends(get_db)):
         # NINCS LIMIT, NINCS FELTÉTEL: SELECT * FROM ...
         query = f'SELECT * FROM "{pipeline.target_table_name}"'
         df = pd.read_sql(query, db.bind)
-        
+
         # JSON kompatibilitás miatt a NaN-okat kiszedjük
         df = df.astype(object).where(pd.notnull(df), None)
         return {"data": df.to_dict(orient="records")}

@@ -2,11 +2,15 @@ import sqlalchemy as sa
 import json
 import os
 from logic.type_converter import map_to_postgresql_type, guess_type
-from transforms.field_mapping import get_concat_columns, get_final_selected_columns, get_final_column_order, get_all_final_columns
+from transforms.field_mapping import get_final_selected_columns, get_final_column_order, get_all_final_columns
+
 
 def create_table(pipeline_id, **kwargs):
-    db_url = os.getenv("DB_URL", "postgresql+psycopg2://postgres:admin123@host.docker.internal:5433/ETL")
+    db_url = os.getenv("DB_URL") or os.getenv("AIRFLOW__DATABASE__SQL_ALCHEMY_CONN")
+    if not db_url:
+        raise ValueError("Error: Database connection failed.")
     engine = sa.create_engine(db_url)
+
     with engine.connect() as conn:
         query = sa.text("""
                         SELECT target_table_name,
@@ -20,8 +24,8 @@ def create_table(pipeline_id, **kwargs):
                         FROM etlconfig
                         WHERE id = :id
                         """)
+
         result = conn.execute(query, {"id": pipeline_id}).mappings().first()
-        print("[CREATE_TABLE] Lekérdezett konfig:", result)
         table_name = result['target_table_name']
         field_mappings = result['field_mappings']
         selected_columns = result['selected_columns']
@@ -31,7 +35,6 @@ def create_table(pipeline_id, **kwargs):
         order_by_column = result.get('order_by_column')
         order_direction = result.get('order_direction')
 
-        # JSON decode
         if isinstance(field_mappings, str):
             field_mappings = json.loads(field_mappings)
         if isinstance(selected_columns, str):
@@ -41,9 +44,7 @@ def create_table(pipeline_id, **kwargs):
         if isinstance(group_by_columns, str):
             group_by_columns = json.loads(group_by_columns) if group_by_columns else []
 
-        # Lista -> Dict konverzió
         if isinstance(field_mappings, list):
-            print("[CREATE_TABLE] Converting field_mappings from list to dict format")
             field_mappings_dict = {}
             for field in field_mappings:
                 field_name = field.get('name')
@@ -52,9 +53,7 @@ def create_table(pipeline_id, **kwargs):
                     field_mappings_dict[field_name] = field_props
             field_mappings = field_mappings_dict
 
-        # 🔥 DYNAMIC SCHEMA DISCOVERY
         if not field_mappings:
-            print("[CREATE_TABLE] field_mappings üres → dinamikus séma felfedezés XCom-ból")
             ti = kwargs["ti"]
             sample_rows = (
                     ti.xcom_pull(task_ids=f"extract_data_{pipeline_id}", key="extracted_data")
@@ -65,46 +64,35 @@ def create_table(pipeline_id, **kwargs):
                 sample_rows = [sample_rows]
 
             if not sample_rows:
-                raise Exception("Nem tudok dinamikus mezőket generálni, mert az extract_data nem adott vissza mintát!")
+                raise Exception("The source has no data!")
 
             first = sample_rows[0]
             auto_field_mappings = {}
             for key, value in first.items():
                 auto_field_mappings[key] = {
                     "type": guess_type(key, value),
-                    "split": False,
-                    "concat": {"with": "", "enabled": False, "separator": " "},
                     "delete": False,
                     "rename": False,
-                    "newName": "",
-                    "separator": ""
+                    "newName": ""
                 }
             field_mappings = auto_field_mappings
 
-        # --- AUTOMATIKUS JAVÍTÁS: id ütközés kezelése ---
         if "id" in field_mappings:
-            print("[CREATE_TABLE] ⚠️ 'id' column detected in input! Renaming to 'source_id' to avoid PK conflict.")
             props = field_mappings["id"]
             if not props.get("rename"):
                 props["rename"] = True
                 props["newName"] = "source_id"
-                print("[CREATE_TABLE] -> Auto-rename: id -> source_id")
             elif props.get("rename") and props.get("newName") == "id":
                 props["newName"] = "source_id"
-                print("[CREATE_TABLE] -> Fixing manual rename: id -> source_id")
-        # ------------------------------------------------
 
         if not selected_columns and field_mappings:
-            print("[CREATE_TABLE] selected_columns üres volt (pl. Advanced Mode) → Minden mező kiválasztása.")
             selected_columns = list(field_mappings.keys())
-            
+
         if not column_order and field_mappings:
             column_order = list(field_mappings.keys())
 
-        print("[CREATE_TABLE] Konfiguráció véglegesítve:", selected_columns)
-
         unique_cols = [col for col, props in field_mappings.items() if props.get("unique")] if field_mappings else []
-        concat_cols = get_concat_columns(field_mappings)
+
         final_selected_columns = get_final_selected_columns(selected_columns, field_mappings)
         final_column_order = get_final_column_order(column_order, field_mappings)
 
@@ -114,30 +102,16 @@ def create_table(pipeline_id, **kwargs):
             field_mappings=field_mappings
         )
 
-        # --- JAVÍTÁS: Duplikációk eltávolítása és 'id' végső szűrése ---
-        print(f"[CREATE_TABLE] Raw columns before dedup: {final_columns}")
-        
         seen = set()
         deduped_columns = []
         for col in final_columns:
-            # 1. 'id' szűrése (ha véletlenül benne maradt volna)
             if col == 'id':
-                print("[CREATE_TABLE] 🚨 Removing 'id' from final columns to prevent PK conflict.")
                 continue
-            
-            # 2. Duplikáció szűrése (pl. DIMONE)
             if col not in seen:
                 seen.add(col)
                 deduped_columns.append(col)
-            else:
-                print(f"[CREATE_TABLE] ⚠️ Duplicate column detected and removed: {col}")
-        
         final_columns = deduped_columns
-        # ----------------------------------------------------------------
 
-        print(f"[CREATE_TABLE] FINAL COLUMNS: {final_columns}")
-
-        # Átnevezési mapping (XCom-hoz)
         col_rename_map = {}
         for orig, props in field_mappings.items():
             if props.get("delete", False):
@@ -147,7 +121,6 @@ def create_table(pipeline_id, **kwargs):
             else:
                 col_rename_map[orig] = orig
 
-        # group_by, order_by feloldás
         def resolve_final(col):
             mapping = field_mappings.get(col, {})
             if mapping.get("delete", False):
@@ -160,20 +133,13 @@ def create_table(pipeline_id, **kwargs):
         mapped_group_by_columns = [col for col in mapped_group_by_columns if col]
         mapped_order_by_column = resolve_final(order_by_column) if order_by_column else None
 
-        # --- Tábla létrehozás ---
         column_defs = []
         for col in final_columns:
-            # Megkeressük az eredeti mezőt a mappingben
             props = next((p for k, p in field_mappings.items()
                           if (p.get("rename") and p.get("newName") == col) or (not p.get("rename") and k == col)), {})
-
             raw_type = props.get('type', 'string')
             col_type = map_to_postgresql_type(raw_type)
-
             col_def = f'"{col}" {col_type}'
-
-            if props.get('nullable') is False:
-                col_def += " NOT NULL"
 
             if update_mode == "upsert" and props.get('unique'):
                 col_def += " UNIQUE"
@@ -181,26 +147,24 @@ def create_table(pipeline_id, **kwargs):
             column_defs.append(col_def)
 
         if not column_defs:
-            print("[CREATE_TABLE] ERROR: Még mindig nincs oszlop!")
-            raise Exception("A tábla nem hozható létre, mert nincs egyetlen oszlop sem!")
+            raise Exception("No columns to create.")
 
         column_sql = ",\n  ".join(column_defs)
         create_sql = f'''
         CREATE TABLE IF NOT EXISTS "{table_name}" (
           id SERIAL PRIMARY KEY{',' if column_sql else ''}
           {column_sql}
-        );
-        '''
-        print("[CREATE_TABLE] CREATE SQL:\n", create_sql)
-        conn.execute(sa.text(create_sql))
-        print(f"[CREATE_TABLE] Tábla létrehozva: {table_name}")
+        );'''
 
-        # XCom push
-        ti = kwargs['ti']
-        ti.xcom_push(key='final_columns', value=final_columns)
-        ti.xcom_push(key='col_rename_map', value=col_rename_map)
-        ti.xcom_push(key='group_by_columns', value=mapped_group_by_columns)
-        ti.xcom_push(key='order_by_column', value=mapped_order_by_column)
-        ti.xcom_push(key='order_direction', value=order_direction)
-        ti.xcom_push(key='unique_cols', value=unique_cols)
-        ti.xcom_push(key='field_mappings', value=field_mappings)
+    # Végrehajtás külön begin blokkban az automatikus commit miatt
+    with engine.begin() as b_conn:
+        b_conn.execute(sa.text(create_sql))
+
+    ti = kwargs['ti']
+    ti.xcom_push(key='final_columns', value=final_columns)
+    ti.xcom_push(key='col_rename_map', value=col_rename_map)
+    ti.xcom_push(key='group_by_columns', value=mapped_group_by_columns)
+    ti.xcom_push(key='order_by_column', value=mapped_order_by_column)
+    ti.xcom_push(key='order_direction', value=order_direction)
+    ti.xcom_push(key='unique_cols', value=unique_cols)
+    ti.xcom_push(key='field_mappings', value=field_mappings)

@@ -105,6 +105,7 @@ async function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1600,
         height: 800,
+        show: false, // Ne mutassuk rögtön, amíg a Docker buildel
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -114,25 +115,36 @@ async function createWindow() {
 
     createMenu(mainWindow);
 
-    // 1. Docker konténerek indítása a háttérben a PROJECT_ROOT mappából
-    console.log(`Docker indítása innen: ${PROJECT_ROOT}`);
-    exec('docker-compose up -d', { cwd: PROJECT_ROOT }, (error) => {
+    // 1. Mutatunk egy helyi betöltő oldalt (ezt lentebb létrehozzuk)
+    // Ez jelzi a usernek, hogy "nyugi, dolgozom a háttérben"
+    mainWindow.loadFile(path.join(__dirname, 'loading.html'));
+    mainWindow.once('ready-to-show', () => {
+        mainWindow.show();
+    });
+
+    // 2. Docker indítása --build flag-gel!
+    // Ez elintézi az NPM install-t és a Build-et a konténeren belül
+    console.log(`Docker indítása (build-del): ${PROJECT_ROOT}`);
+
+    // A parancs: up -d --build
+    exec('docker-compose up -d --build', { cwd: PROJECT_ROOT }, (error) => {
         if (error) {
-            console.error(`Docker indítási hiba: ${error}`);
-            // Csak akkor dobunk hibaablakot, ha nem fejlesztői módban vagyunk
+            console.error(`Docker hiba: ${error}`);
             if (!isDev) {
-                dialog.showErrorBox('Docker Hiba', 'Nem sikerült elindítani a háttérfolyamatokat. Ellenőrizd a Docker Desktopot!');
+                dialog.showErrorBox('Docker Hiba', 'Ellenőrizd, hogy a Docker Desktop fut-e!');
             }
         }
     });
 
-    // 2. Várakozás a felület betöltésére (max 2 perc az első build miatt)
+    // 3. Várakozás a szerverre
     try {
-        await waitForViteServer();
+        // Mivel az első build lassú, növeljük a timeout-ot (pl. 5 perc = 300 retries)
+        await waitForViteServer(300);
+
+        // Ha kész a build és fut a konténer, átváltunk a valódi URL-re
         mainWindow.loadURL(VITE_DEV_SERVER_URL);
     } catch (err) {
-        // Ha nem jön be a felület, hibaüzenetet mutatunk
-        dialog.showErrorBox('Indítási hiba', 'Az alkalmazás nem tudott csatlakozni a felülethez időben.');
+        dialog.showErrorBox('Indítási hiba', 'A háttérfolyamatok túl lassan indultak el.');
     }
 
     mainWindow.on('closed', () => {

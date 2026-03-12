@@ -4,27 +4,24 @@ from datetime import datetime, timedelta
 import sqlalchemy as sa
 import os
 import logging
-import pendulum  # Az Airflow beépített időzóna kezelője
+import pendulum
 
-# Logolás beállítása
+
 logger = logging.getLogger("airflow.task")
-
-# Adatbázis kapcsolat
-db_url = os.getenv("DB_URL", "postgresql+psycopg2://postgres:admin123@host.docker.internal:5433/ETL")
+db_url = os.getenv("DB_URL")
+if not db_url:
+    raise ValueError("Error: Database connection failed.")
 engine = sa.create_engine(db_url)
-
-# --- IDŐZÓNA LEKÉRÉSE A SETTINGS-BŐL ---
 def get_user_timezone():
     try:
         with engine.connect() as conn:
-            # A settings_model.py alapján a tábla neve 'system_settings'
             query = sa.text("SELECT timezone FROM system_settings LIMIT 1")
             result = conn.execute(query).fetchone()
             if result and result[0]:
                 return result[0]
     except Exception as e:
-        print(f"⚠️ Could not fetch timezone from DB, falling back to Europe/Budapest: {e}")
-    return "Europe/Budapest" # Alapértelmezett érték, ha az adatbázis még üres
+        print(f"Fetch error {e}")
+    return "Europe/Budapest"
 
 user_tz_name = get_user_timezone()
 local_tz = pendulum.timezone(user_tz_name)
@@ -37,9 +34,7 @@ default_args = {
 }
 
 def create_dag_structure(dag, pipeline_data):
-    """
-    Taskok felépítése a pipeline adatok alapján.
-    """
+
     from logic.create import create_table
     from logic.extract import extract_data
     from logic.transform import transform_data
@@ -82,7 +77,6 @@ def create_dag_structure(dag, pipeline_data):
 
     extract_task >> create_task >> transform_task >> load_task
 
-# Pipeline-ok betöltése és DAG generálás
 try:
     with engine.connect() as conn:
         query = sa.text("SELECT * FROM etlconfig")
@@ -109,7 +103,6 @@ try:
                 description=f"JOB for {pipeline['pipeline_name']}",
                 default_args=default_args,
                 schedule_interval=schedule_interval,
-                # A start_date-hez hozzáadjuk a beállított időzónát
                 start_date=datetime(2025, 1, 1, tzinfo=local_tz),
                 catchup=False,
                 tags=['JOB', pipeline.get('source', 'unknown')]
@@ -119,7 +112,7 @@ try:
             globals()[dag_id] = dag
 
         except Exception as e:
-            print(f"❌ Failed to generate DAG for pipeline {pipeline.get('id')}: {e}")
+            print(f"Failed to generate {pipeline.get('id')}: {e}")
 
 except Exception as e:
-    print(f"🔥 CRITICAL ERROR reading etlconfig: {e}")
+    print(f" Error: {e}")

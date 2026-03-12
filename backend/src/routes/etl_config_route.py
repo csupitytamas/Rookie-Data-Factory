@@ -1,5 +1,5 @@
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from src.schemas import  ETLConfigBase, ETLConfigUpdate, ETLConfigResponse
@@ -9,7 +9,7 @@ from src.models.status_model import Status
 from src.models.api_schemas_model import APISchema
 from src.utils.db_creation_util import generate_table_name, generate_dag_id, remove_version_suffix
 from src.constans.accepted_fields import ACCEPTED_ETL_FIELDS
-from src.common.airflow_client import pause_airflow_dag, unpause_airflow_dag
+from src.common.airflow_client import pause_airflow_dag, unpause_airflow_dag, trigger_airflow_dag_with_retry
 from datetime import datetime
 import shutil
 import os
@@ -19,41 +19,39 @@ from sqlalchemy import inspect
 
 router = APIRouter()
 
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks # ÚJ IMPORT: BackgroundTasks
 
 @router.post("/create", response_model=ETLConfigResponse)
 def create_pipeline(
     config: ETLConfigBase,
+    background_tasks: BackgroundTasks, # ÚJ PARAMÉTER
     db: Session = Depends(get_db),
 ):
     try:
-        config_dict = config.dict()
+        # 1. Pipeline adatok előkészítése és mentése (Változatlan)
+        config_dict = config.model_dump()
         filtered_data = {k: v for k, v in config_dict.items() if k in ACCEPTED_ETL_FIELDS}
-
-        schema = db.query(APISchema).filter_by(source=config.source).first()
-        if not schema:
-            raise HTTPException(status_code=404, detail="No schema found for the selected source.")
-
+        
         table_name = generate_table_name(config.pipeline_name, version=1)
         dag_id = generate_dag_id(config.pipeline_name, version=1)
-
         filtered_data["target_table_name"] = table_name
         filtered_data["dag_id"] = dag_id
 
         new_pipeline = ETLConfig(**filtered_data, version=1)
-
         db.add(new_pipeline)
         db.commit()
         db.refresh(new_pipeline)
 
-        try:
-            unpause_airflow_dag(new_pipeline.dag_id)
-        except Exception as e:
-            print(f"⚠️ Nem sikerült unpause-olni a DAG-ot {new_pipeline.dag_id}: {e}", flush=True)
+        # 2. JAVÍTÁS: Az Airflow indítását betesszük a háttérbe
+        # A függvényt és a paramétert adjuk át, a FastAPI fogja meghívni külön szálon
+        background_tasks.add_task(trigger_airflow_dag_with_retry, new_pipeline.dag_id)
+
+        # 3. Azonnali válasz a Frontendnek - nincs több fagyás!
         return new_pipeline
 
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-
 
 def attach_alias(pipeline: ETLConfig):
     if pipeline.schema:

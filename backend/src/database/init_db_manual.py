@@ -9,14 +9,10 @@ sys.path.append(BASE_DIR)
 from src.database.connection import engine, Base, SessionLocal
 
 # Modellek importálása
-from src.models.users_model import User
-from src.models.auth_model import UserSession
 from src.models.etl_config_model import ETLConfig
 from src.models.api_schemas_model import APISchema
 from src.models.status_model import Status
-
-# Kapcsolatok betöltése
-import src.models.relationships
+from src.models.settings_model import Settings
 
 def seed_api_schemas():
     """Alapértelmezett API sémák betöltése a jelenlegi modellezés alapján, ha a tábla még üres."""

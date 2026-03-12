@@ -1,24 +1,28 @@
-# Használjunk egy könnyű Python 3.10-es alapképet
+# 1. Alapkép
 FROM python:3.10-slim
 
-# Munkakönyvtár beállítása
+# 2. Munkakönyvtár
 WORKDIR /app
 
-# Rendszerfüggőségek telepítése (pl. a psycopg2 miatt kellhet)
+# 3. Rendszerfüggőségek
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Másoljuk át a requirements.txt fájlt és telepítsük a csomagokat
-COPY requirements.txt .
+# 4. Requirements másolása (figyelem: a build context a ROOT lesz!)
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Másoljuk át a teljes backend kódot
-COPY . .
+# 5. A teljes backend forráskód másolása
+COPY backend/src ./src
 
-# FastAPI portjának megnyitása
+# 6. A HIÁNYZÓ LÁNCSZEM: A gyári script beemelése a másik mappából
+# Ezt csak akkor látja a Docker, ha a projekt főkönyvtárából indítod a buildet!
+COPY airflow/dags/etl_generate_dags.py ./src/airflow/dags/
+
+# 7. FastAPI port
 EXPOSE 8000
 
-# Szerver indítása
+# 8. Indítás (marad az eredeti logikád)
 CMD ["sh", "-c", "python src/database/init_db_manual.py && uvicorn src.main:app --host 0.0.0.0 --port 8000"]
