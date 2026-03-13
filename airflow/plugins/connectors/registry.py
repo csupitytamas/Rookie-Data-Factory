@@ -11,6 +11,7 @@ connector_registry: Dict[str, Type[BaseConnector]] = {
     "oecd": OECDConnector,
     "who": WHOConnector,
     "who_gho": WHOConnector,
+
 }
 
 

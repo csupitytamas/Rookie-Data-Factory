@@ -2,7 +2,6 @@ from typing import List, Dict, Any, Optional
 import logging
 import requests
 from connectors.base import BaseConnector
-
 logger = logging.getLogger(__name__)
 
 class OECDConnector(BaseConnector):

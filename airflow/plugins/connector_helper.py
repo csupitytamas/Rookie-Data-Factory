@@ -4,33 +4,39 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-possible_paths = [
-    '/opt/backend/src',
-    os.path.join(os.path.dirname(__file__), '..', '..', 'backend', 'src'),
-    os.path.join(os.path.dirname(__file__), '..', '..', '..', 'backend', 'src'),
-]
+# Mivel v1.1-ben a kód bent van a konténerben, fixáljuk az útvonalakat
+# Az Airflow a /opt/airflow/plugins mappát automatikusan hozzáadja a path-hoz.
+plugins_path = '/opt/airflow/plugins'
+if plugins_path not in sys.path:
+    sys.path.insert(0, plugins_path)
 
-for backend_path in possible_paths:
-    if os.path.exists(backend_path) and backend_path not in sys.path:
-        sys.path.insert(0, backend_path)
-        break
-
+# Importálás: megpróbáljuk a plugins mappából betölteni a connectors csomagot
 try:
     from connectors import get_connector
-except ImportError:
+
+    logger.info("Siker: get_connector betöltve a connectors csomagból.")
+except ImportError as e1:
     try:
+        # Alternatív útvonal, ha a backend struktúrából jönne
         from src.connectors import get_connector
-    except ImportError:
-        pass
+
+        logger.info("Siker: get_connector betöltve a src.connectors csomagból.")
+    except ImportError as e2:
+        logger.error(f"Kritikus hiba: Nem sikerült importálni a get_connector-t. Hibák: {e1}, {e2}")
+        logger.error(f"Jelenlegi sys.path: {sys.path}")
+        # Nem állítjuk meg az egész Airflow-t, de jelezzük a hibát
+        get_connector = None
 
 
 def fetch_data_with_connector(connector_type, endpoint, parameters, base_url=None, field_mappings=None):
+    if get_connector is None:
+        raise ImportError("A get_connector nem elérhető. Ellenőrizd a pluginokat!")
+
     try:
         connection_mapping = {
             "worldbank": "world_bank_api",
             "oecd": "oecd_api",
             "who": "who_api",
-            "undata": "un_data_api"
         }
 
         conn_id = connection_mapping.get(connector_type.lower())
@@ -56,6 +62,7 @@ def fetch_data_with_connector(connector_type, endpoint, parameters, base_url=Non
 
 
 def extract_from_path(data, path):
+    # (A függvény marad változatlan, ez tökéletesen működik)
     keys = path.split('.')
     current = data
     for key in keys:

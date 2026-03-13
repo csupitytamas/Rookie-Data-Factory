@@ -9,21 +9,18 @@ services:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow_password
       POSTGRES_DB: airflow
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 5s
       retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   # 2. BACKEND (FastAPI)
   backend:
-    image: csupitytamas/rookie-backend:v1.0
+    image: csupitytamas/rookie-backend:v1.1
     restart: always
-    env_file:
-      - .env
+    env_file: .env
     environment:
       - DB_URL=postgresql+psycopg2://airflow:airflow_password@postgres:5432/airflow
       - PYTHONPATH=/app/src:/app
@@ -32,13 +29,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - airflow_dags:/app/src/airflow/dags # Ez most már az Image-ben lévő fájlt fogja használni
-      - airflow_logic:/app/src/logic
+
 
   # 3. FRONTEND (Vue.js)
   frontend:
-    image: csupitytamas/rookie-frontend:v1.0
+    image: csupitytamas/rookie-frontend:v1.1
     restart: always
     ports:
       - "5173:80"
@@ -47,48 +42,39 @@ services:
 
   # 4. AIRFLOW INICIALIZÁLÓ
   airflow-init:
-    image: csupitytamas/rookie-airflow:v1.0
-    env_file:
-      - .env
+    image: csupitytamas/rookie-airflow:v1.1
+    env_file: .env
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow_password@postgres:5432/airflow
-    volumes:
-      - airflow_dags:/opt/airflow/dags
     command: >
       bash -c "airflow db init && 
       (airflow users create --username admin --password admin --firstname admin --lastname admin --role Admin --email admin@example.com || true)"
 
   # 5. AIRFLOW WEBSERVER
   airflow-webserver:
-    image: csupitytamas/rookie-airflow:v1.0
+    image: csupitytamas/rookie-airflow:v1.1
     restart: always
-    env_file:
-      - .env
+    env_file: .env
     depends_on:
       airflow-init:
         condition: service_completed_successfully
     environment:
       - DB_URL=postgresql+psycopg2://airflow:airflow_password@postgres:5432/airflow
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow_password@postgres:5432/airflow
-      # Kritikus: az Airflow innen fogja látni a logic csomagot!
       - PYTHONPATH=/opt/airflow/plugins:/opt/airflow/dags
     ports:
       - "8080:8080"
     volumes:
       - airflow_logs:/opt/airflow/logs
-      - airflow_dags:/opt/airflow/dags
-      - airflow_logic:/opt/airflow/plugins/logic:ro
+      - ./output:/opt/airflow/plugins/out/output
     command: webserver
 
   # 6. AIRFLOW SCHEDULER
   airflow-scheduler:
-    image: csupitytamas/rookie-airflow:v1.0
+    image: csupitytamas/rookie-airflow:v1.1
     restart: always
-    env_file:
-      - .env
+    env_file: .env
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -98,12 +84,9 @@ services:
       - PYTHONPATH=/opt/airflow/plugins:/opt/airflow/dags
     volumes:
       - airflow_logs:/opt/airflow/logs
-      - airflow_dags:/opt/airflow/dags
-      - airflow_logic:/opt/airflow/plugins/logic:ro
+      - ./output:/opt/airflow/plugins/out/output
     command: scheduler
 
 volumes:
   postgres_data:
   airflow_logs:
-  airflow_dags:
-  airflow_logic:

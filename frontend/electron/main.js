@@ -8,170 +8,140 @@ const { createMenu } = require("./menu");
 
 let mainWindow;
 
-// --- ÚTVONAL KEZELÉS JAVÍTÁSA ---
-// Meghatározzuk, hogy az alkalmazás be van-e csomagolva (.exe)
+// --- ÚTVONAL KEZELÉS ---
 const isDev = !app.isPackaged;
+const PROJECT_ROOT = isDev ? path.join(__dirname, '../../') : path.dirname(process.execPath);
+const DOCKER_OUT_PATH = path.join(PROJECT_ROOT, 'output');
+const DEBUG_LOG_PATH = path.join(PROJECT_ROOT, 'electron_debug.log');
 
-// Ha fejlesztünk (npm start), a gyökér 2 szinttel feljebb van.
-// Ha az .exe fut, a gyökér az .exe melletti mappa.
-const PROJECT_ROOT = isDev 
-    ? path.join(__dirname, '../../') 
-    : path.dirname(process.execPath);
+// Saját log függvény: kiírja a konzolra ÉS egy fájlba is az .exe mellé
+function logToFile(msg) {
+    const time = new Date().toISOString();
+    const logMsg = `[${time}] ${msg}\n`;
+    fs.appendFileSync(DEBUG_LOG_PATH, logMsg);
+    console.log(msg);
+}
 
-const VITE_DEV_SERVER_URL = 'http://localhost:5173';
-const DOCKER_OUT_PATH = path.join(PROJECT_ROOT, 'airflow/plugins/out/output');
-const BACKEND_SETTINGS_URL = 'http://localhost:8000/etl/settings/';
+// Kezdő log
+logToFile("--- Alkalmazás indul ---");
+logToFile(`Mód: ${isDev ? "Fejlesztői" : "Produkciós (.exe)"}`);
+logToFile(`Projekt gyökér: ${PROJECT_ROOT}`);
+
+if (!fs.existsSync(DOCKER_OUT_PATH)) {
+    fs.mkdirSync(DOCKER_OUT_PATH, { recursive: true });
+    logToFile("Output mappa létrehozva.");
+}
 
 /**
- * Lekéri a backendtől a felhasználó által beállított letöltési útvonalat.
+ * Lekéri a mentési útvonalat. Kezeli a 307-es átirányítást is.
  */
 function getDownloadPath() {
     return new Promise((resolve) => {
-        http.get(BACKEND_SETTINGS_URL, (res) => {
-            const { statusCode } = res;
-            let data = '';
-
-            if (statusCode !== 200) {
-                res.resume();
-                return resolve(null);
+        const url = 'http://localhost:8000/etl/settings/';
+        http.get(url, (res) => {
+            // Ha a Backend átirányít (307), kövessük a Location fejlécet
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                logToFile(`Átirányítás észlele (307) -> ${res.headers.location}`);
+                http.get(res.headers.location, (res2) => {
+                    let data = '';
+                    res2.on('data', d => data += d);
+                    res2.on('end', () => {
+                        try { resolve(JSON.parse(data).download_path); } catch(e) { resolve(null); }
+                    });
+                });
+                return;
             }
 
-            res.setEncoding('utf8');
-            res.on('data', (chunk) => { data += chunk; });
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
             res.on('end', () => {
                 try {
-                    if (!data) return resolve(null);
                     const settings = JSON.parse(data);
                     resolve(settings.download_path || null);
-                } catch (e) {
-                    resolve(null);
-                }
+                } catch (e) { resolve(null); }
             });
-        }).on("error", () => {
+        }).on("error", (err) => {
+            logToFile(`Hiba a Settings lekérésekor: ${err.message}`);
             resolve(null);
         });
     });
 }
 
 // --- FÁJLFIGYELŐ (CHOKIDAR) ---
-// Figyeli a Docker által generált kimeneti fájlokat és másolja őket a user mappájába
 chokidar.watch(DOCKER_OUT_PATH, {
-    ignoreInitial: true, 
+    ignoreInitial: true,
     persistent: true,
-    usePolling: true,   
-    interval: 500,       
-    binaryInterval: 1000
+    usePolling: true,
+    interval: 1000,
+    awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 500 }
 }).on('add', async (filePath) => {
+    logToFile(`ÚJ FÁJL A DOCKERBEN: ${filePath}`);
     const fileName = path.basename(filePath);
+
     try {
-        const basePath = await getDownloadPath();
-        if (basePath) {
-            const resultsFolder = path.join(basePath, 'RookieDataFactory', 'Results');
+        const userBasePath = await getDownloadPath();
+        logToFile(`Cél útvonal a Settings alapján: ${userBasePath}`);
+
+        if (userBasePath) {
+            // Mappaszerkezet felépítése (RookieDataFactory/Results)
+            const resultsFolder = path.join(userBasePath, 'RookieDataFactory', 'Results');
+
             if (!fs.existsSync(resultsFolder)) {
                 fs.mkdirSync(resultsFolder, { recursive: true });
+                logToFile(`Létrehozva: ${resultsFolder}`);
             }
+
             const destPath = path.join(resultsFolder, fileName);
+
+            // TÉNYLEGES MÁSOLÁS
             fs.copyFileSync(filePath, destPath);
+            logToFile(`SIKER: Fájl átmásolva ide: ${destPath}`);
+        } else {
+            logToFile("FIGYELEM: Nincs mentési útvonal beállítva a Settings-ben!");
         }
     } catch (err) {
-        console.error("Hiba a fájl másolásakor:", err);
+        logToFile(`HIBA a másolás során: ${err.message}`);
     }
 });
 
-// --- ABLAK ÉS DOCKER KEZELÉS ---
-
-/**
- * Megvárja, amíg a Dockerben futó Frontend szerver elérhetővé válik.
- */
-async function waitForViteServer(retries = 120) {
-    return new Promise((resolve, reject) => {
-        const checkServer = () => {
-            http.get(VITE_DEV_SERVER_URL, () => {
-                resolve(); // Siker! A konténerek futnak.
-            }).on("error", () => {
-                if (retries > 0) {
-                    retries--;
-                    setTimeout(() => checkServer(), 1000);
-                } else {
-                    reject(new Error("Időtúllépés"));
-                }
-            });
-        };
-        checkServer();
-    });
-}
-
+// --- ABLAK ÉS DOCKER ---
 async function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 1600,
-        height: 800,
-        show: false, // Ne mutassuk rögtön, amíg a Docker buildel
-        webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js')
-        }
+        width: 1600, height: 800, show: false,
+        webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') }
     });
 
     createMenu(mainWindow);
-
-    // 1. Mutatunk egy helyi betöltő oldalt (ezt lentebb létrehozzuk)
-    // Ez jelzi a usernek, hogy "nyugi, dolgozom a háttérben"
     mainWindow.loadFile(path.join(__dirname, 'loading.html'));
-    mainWindow.once('ready-to-show', () => {
-        mainWindow.show();
+    mainWindow.once('ready-to-show', () => mainWindow.show());
+
+    logToFile("Docker indítása...");
+    exec('docker compose up -d', { cwd: PROJECT_ROOT }, (err) => {
+        if (err) logToFile(`Docker Error: ${err.message}`);
     });
 
-    // 2. Docker indítása --build flag-gel!
-    // Ez elintézi az NPM install-t és a Build-et a konténeren belül
-    console.log(`Docker indítása (build-del): ${PROJECT_ROOT}`);
-
-    // A parancs: up -d --build
-    exec('docker-compose up -d --build', { cwd: PROJECT_ROOT }, (error) => {
-        if (error) {
-            console.error(`Docker hiba: ${error}`);
-            if (!isDev) {
-                dialog.showErrorBox('Docker Hiba', 'Ellenőrizd, hogy a Docker Desktop fut-e!');
-            }
-        }
-    });
-
-    // 3. Várakozás a szerverre
-    try {
-        // Mivel az első build lassú, növeljük a timeout-ot (pl. 5 perc = 300 retries)
-        await waitForViteServer(300);
-
-        // Ha kész a build és fut a konténer, átváltunk a valódi URL-re
-        mainWindow.loadURL(VITE_DEV_SERVER_URL);
-    } catch (err) {
-        dialog.showErrorBox('Indítási hiba', 'A háttérfolyamatok túl lassan indultak el.');
-    }
-
-    mainWindow.on('closed', () => {
-        mainWindow = null;
-    });
+    // Várakozás a Vite szerverre
+    const checkInterval = setInterval(() => {
+        http.get('http://localhost:5173', () => {
+            logToFile("Szerver kész, betöltés...");
+            clearInterval(checkInterval);
+            mainWindow.loadURL('http://localhost:5173');
+        }).on("error", () => {});
+    }, 2000);
 }
 
-app.whenReady().then(() => {
-   createWindow();
-});
+app.whenReady().then(createWindow);
 
-// Kilépéskor leállítjuk a konténereket is
 app.on("window-all-closed", () => {
-    console.log("Docker konténerek leállítása...");
-    exec('docker-compose down', { cwd: PROJECT_ROOT }, () => {
-        if (process.platform !== "darwin") {
-            app.quit();
-        }
+    logToFile("Alkalmazás leállítása, konténerek lekapcsolása...");
+    exec('docker compose down', { cwd: PROJECT_ROOT }, () => {
+        if (process.platform !== "darwin") app.quit();
     });
 });
 
-// --- IPC HANDLEREK A FRONTEND KOMMUNIKÁCIÓHOZ ---
-
+// --- IPC HANDLEREK ---
 ipcMain.handle('dialog:openDirectory', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-        properties: ['openDirectory']
-    });
+    const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openDirectory'] });
     return canceled ? null : filePaths[0];
 });
 
@@ -181,15 +151,11 @@ ipcMain.handle('create-directories', async (event, basePath) => {
         const mainPath = path.join(basePath, 'RookieDataFactory');
         const resultsPath = path.join(mainPath, 'Results');
         const logsPath = path.join(mainPath, 'Logs');
-        
         if (!fs.existsSync(mainPath)) fs.mkdirSync(mainPath, { recursive: true });
         if (!fs.existsSync(resultsPath)) fs.mkdirSync(resultsPath, { recursive: true });
         if (!fs.existsSync(logsPath)) fs.mkdirSync(logsPath, { recursive: true });
-        
         return { success: true, mainPath, resultsPath, logsPath };
-    } catch (err) {
-        return { success: false, error: err.message };
-    }
+    } catch (err) { return { success: false, error: err.message }; }
 });
 
 ipcMain.handle('save-file-to-folder', async (event, { fileName, fileContent, basePath, subFolder }) => {
@@ -199,7 +165,5 @@ ipcMain.handle('save-file-to-folder', async (event, { fileName, fileContent, bas
         const filePath = path.join(targetDir, fileName);
         fs.writeFileSync(filePath, fileContent);
         return { success: true, filePath };
-    } catch (err) {
-        return { success: false, error: err.message };
-    }
+    } catch (err) { return { success: false, error: err.message }; }
 });
