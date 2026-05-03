@@ -28,6 +28,7 @@ def transform_data(pipeline_id, **kwargs):
             transform_meta = row.get('transformation')
             if transform_meta and transform_meta.get('type') in ['advenced', 'advanced'] and raw_sql:
                 custom_sql = raw_sql
+
     if custom_sql:
         try:
             # CTE Wrapper alkalmazása ideiglenes táblán
@@ -40,9 +41,8 @@ def transform_data(pipeline_id, **kwargs):
                 engine=engine
             )
             # Ideiglenes tábla kiürítése
-            with engine.connect() as conn:
+            with engine.begin() as conn:
                 conn.execute(sa.text(f'DROP TABLE IF EXISTS "{staging_table}"'))
-                conn.commit()
 
             # Mentés XCom-ba
             transformed_data = result_df.to_dict(orient='records')
@@ -52,10 +52,6 @@ def transform_data(pipeline_id, **kwargs):
         except Exception as e:
             print(f"Error with the Custom SQL {e}")
             raise
-
-        except Exception as e:
-            print(f" SQL Execution Failed: {e}")
-            raise Exception(f"Custom SQL execution error: {e}")
 
     final_columns = ti.xcom_pull(key='final_columns', task_ids=f"create_table_{pipeline_id}")
     col_rename_map = ti.xcom_pull(key='col_rename_map', task_ids=f"create_table_{pipeline_id}")

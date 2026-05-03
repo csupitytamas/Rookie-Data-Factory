@@ -35,14 +35,16 @@ def fetch_data_with_connector(connector_type, endpoint, parameters, base_url=Non
     try:
         connection_mapping = {
             "worldbank": "world_bank_api",
-            "oecd": "oecd_api",
             "who": "who_api",
+            "f1_api": "f1_api",
+            "open_meteo": "open_meteo_api",
+            "football_data": "football_data_api",
+            "unirate": "unirate_api",
         }
 
-        conn_id = connection_mapping.get(connector_type.lower())
-        if not conn_id:
-            raise ValueError(f"Unknown connector: {connector_type}")
-
+        # Ha benne van a listában, azt használjuk, ha nincs, akkor magát a típust (fallback)
+        conn_id = connection_mapping.get(connector_type.lower(), f"{connector_type.lower()}_api")
+        
         connector = get_connector(connector_type, conn_id=conn_id)
 
         if base_url and hasattr(connector, 'base_url'):

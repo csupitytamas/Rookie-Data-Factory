@@ -1,17 +1,23 @@
 from typing import Dict, Type, Optional
 from connectors.base import BaseConnector
 from connectors.world_bank import WorldBankConnector
-from connectors.oecd import OECDConnector
 from connectors.who import WHOConnector
+from connectors.f1 import F1Connector
+from connectors.open_meteo import OpenMeteoConnector
+from connectors.football_data import FootballDataConnector
+from connectors.unirate import UniRateConnector
 
 # Connector registry - itt regisztráljuk az összes elérhető connector-t
 connector_registry: Dict[str, Type[BaseConnector]] = {
     "worldbank": WorldBankConnector,
     "world_bank": WorldBankConnector,
-    "oecd": OECDConnector,
     "who": WHOConnector,
     "who_gho": WHOConnector,
-
+    "f1_api": F1Connector,
+    "open_meteo": OpenMeteoConnector,
+    "football_data": FootballDataConnector,
+    "unirate": UniRateConnector,
+    "unirate_api": UniRateConnector,
 }
 
 
@@ -50,4 +56,3 @@ def register_connector(name: str, connector_class: Type[BaseConnector]):
         connector_class: A connector osztály
     """
     connector_registry[name.lower()] = connector_class
-

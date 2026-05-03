@@ -65,7 +65,7 @@ class BaseConnector(ABC):
             return response
 
     @abstractmethod
-    def get_filter_options(self) -> dict:
+    def get_filter_options(self, current_params: Dict[str, Any] = None) -> dict:
         return {}
 
     @abstractmethod

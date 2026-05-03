@@ -1,74 +1,98 @@
 <template>
   <div class="dashboard">
     <h2>OVERVIEW DASHBOARD</h2>
-    <div class="pipeline" v-for="pipeline in pipelines" :key="pipeline.id">
-      <h3>{{ pipeline.name }}</h3>
-      <p>Last successful run: <strong>{{ pipeline.lastRun }}</strong></p>
-      <p>
-        Status:
-        <strong :class="{
-          'status-success': pipeline.status === 'success',
-          'status-failed': pipeline.status === 'failed',
-          'status-running': pipeline.status === 'running'
-        }">
-          {{ pipeline.status }}
-        </strong>
-      </p>
-      <p>Next scheduled run: <strong>{{ pipeline.nextRun }}</strong></p>
-      <p>Source: <strong>{{ pipeline.alias }}</strong></p>
-      <div class="table-preview" v-if="pipeline.sampleData && pipeline.sampleData.length > 0">
-        <table>
-          <thead>
-            <tr>
-              <th v-for="key in tableKeys(pipeline.sampleData[0])" :key="key">{{ key }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(row, index) in visibleRows(pipeline.sampleData)" :key="index">
-              <td v-for="key in tableKeys(row)" :key="key" :data-label="key">
-                <span v-if="row[key] === null" class="null-value">NULL</span>
-                <span v-else>{{ row[key] }}</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div v-if="hasMoreRows(pipeline.sampleData)" class="table-ellipsis">
-          <button class="ellipsis-btn" @click="openModal(pipeline)" title="Show all data">
-           ➕
-          </button>
+    
+    <div class="pipeline-grid">
+      <div 
+        v-for="pipeline in pipelines" 
+        :key="pipeline.id"
+        :class="['pipeline-tile', { 'is-expanded': expandedId === pipeline.id }]"
+        @click="handleTileClick(pipeline)"
+      >
+        <!-- Close button (Always in top-right when expanded) -->
+        <button v-if="expandedId === pipeline.id" class="close-tile-btn" @click.stop="expandedId = null" title="Collapse">✕</button>
+
+        <!-- MINI VIEW (Header part) -->
+        <div class="pipeline-info-tile mini">
+          <div class="tile-header">
+            <h3>{{ pipeline.name }}</h3>
+            <span v-if="expandedId !== pipeline.id" :class="['status-dot', getStatusClass(pipeline.status)]"></span>
+          </div>
+          <div v-if="expandedId !== pipeline.id" class="mini-meta">
+            <p>Status: <strong :class="getStatusClass(pipeline.status)">{{ pipeline.status }}</strong></p>
+            <p>Last run: <strong>{{ formatDate(pipeline.lastRun) }}</strong></p>
+          </div>
         </div>
-      </div>
-      <div v-else>
-        <em> No data to display.</em>
+
+        <!-- EXPANDED CONTENT -->
+        <div v-if="expandedId === pipeline.id" class="expanded-content transition-fade">
+          <div class="info-grid secondary-info">
+            <p>Last update: <strong>{{ formatDate(pipeline.lastRun) }}</strong></p>
+            <p>Next update: <strong>{{ formatDate(pipeline.nextRun) }}</strong></p>
+            <p>Status: <strong :class="getStatusClass(pipeline.status)">{{ pipeline.status }}</strong></p>
+            <p>Source: <strong>{{ pipeline.alias }}</strong></p>
+          </div>
+
+          <div class="preview-section">
+            <div v-if="pipeline.sampleData && pipeline.sampleData.length > 0" class="table-preview-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th v-for="key in tableKeys(pipeline.sampleData[0])" :key="key">{{ key }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, index) in visibleRows(pipeline.sampleData)" :key="index">
+                    <td v-for="key in tableKeys(row)" :key="key" :data-label="key">
+                      <span v-if="row[key] === null" class="null-value">NULL</span>
+                      <span v-else>{{ row[key] }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="table-actions">
+                <button class="ellipsis-btn" @click.stop="openFullDataModal(pipeline)" title="Show ALL data in modal">
+                  ➕
+                </button>
+              </div>
+            </div>
+            <div v-else class="no-data-msg">
+              <em>No sample data available for this pipeline.</em>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
+    <!-- FULL DATA MODAL -->
     <div v-if="showModal && modalPipeline" class="modal-overlay" @click.self="closeModal">
-      <div class="modal-content">
-        <h2>{{ modalPipeline.name }}</h2>
+      <div class="expanded-pipeline-card">
+        <button class="close-btn-top" @click="closeModal">✕</button>
+        <h2>Full Dataset: {{ modalPipeline.name }}</h2>
         
-        <div style="overflow-x:auto; max-height:60vh; overflow-y:auto;">
-          <table v-if="modalData && modalData.length > 0">
-            <thead>
-              <tr>
-                <th v-for="key in tableKeys(modalData[0])" :key="key">{{ key }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(row, idx) in modalData" :key="idx">
-                <td v-for="key in tableKeys(row)" :key="key">
-                  <span v-if="row[key] === null" class="null-value">NULL</span>
-                  <span v-else>{{ row[key] }}</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <div v-else>
-            <em v-if="!modalData">Loading...</em>
+        <div class="full-data-section">
+          <div v-if="modalData && modalData.length > 0" class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th v-for="key in tableKeys(modalData[0])" :key="key">{{ key }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in modalData" :key="idx">
+                  <td v-for="key in tableKeys(row)" :key="key">
+                    <span v-if="row[key] === null" class="null-value">NULL</span>
+                    <span v-else>{{ row[key] }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="modal-loading">
+            <em v-if="modalData === null">Loading full dataset...</em>
             <em v-else>No data available.</em>
           </div>
         </div>
-        <button class="modal-close-btn" @click="closeModal">Close</button>
       </div>
     </div>
   </div>
@@ -76,31 +100,42 @@
 
 <script>
 import { getDashboardPipelines, getPipelineData } from "@/api/dashboard";
+import axios from "axios";
 
-const MAX_ROWS = 10;
+const MAX_PREVIEW_ROWS = 11;
 
 export default {
   name: "DashboardView",
   data() {
     return {
       pipelines: [],
+      expandedId: null,
       showModal: false,
       modalPipeline: null,
       modalData: [], 
-      refreshIntervalId: null
+      refreshIntervalId: null,
+      userTimezone: 'Europe/Budapest'
     };
   },
   async mounted() {
+    await this.fetchSettings(); 
     await this.fetchPipelines();
     this.refreshIntervalId = setInterval(this.fetchPipelines, 5000);
   },
   unmounted() {
     if (this.refreshIntervalId) {
       clearInterval(this.refreshIntervalId);
-      this.refreshIntervalId = null;
     }
   },
   methods: {
+    async fetchSettings() {
+      try {
+        const response = await axios.get('http://localhost:8000/etl/settings/');
+        this.userTimezone = response.data?.timezone || 'Europe/Budapest';
+      } catch (err) {
+        console.error("Failed to load settings:", err);
+      }
+    },
     async fetchPipelines() {
       try {
         const response = await getDashboardPipelines();
@@ -109,22 +144,47 @@ export default {
         console.error("Failed to load:", err);
       }
     },
-    visibleRows(sampleData) {
-      return sampleData.slice(0, MAX_ROWS);
+    handleTileClick(pipeline) {
+      if (this.expandedId === pipeline.id) return;
+      this.expandedId = pipeline.id;
     },
-    hasMoreRows(sampleData) {
-      return sampleData.length > MAX_ROWS;
+    getStatusClass(status) {
+      return {
+        'status-success': status === 'success',
+        'status-failed': status === 'failed',
+        'status-running': status === 'running',
+        'status-queued': status === 'queued'
+      };
+    },
+    formatDate(dateString) {
+      if (!dateString || dateString === 'N/A' || dateString === '-') return '-';
+      try {
+        let date;
+        if (typeof dateString === 'string' && !dateString.includes('Z') && !dateString.includes('+')) {
+          date = new Date(dateString + 'Z');
+        } else {
+          date = new Date(dateString);
+        }
+        return date.toLocaleString('hu-HU', {
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit',
+          timeZone: this.userTimezone
+        });
+      } catch (e) {
+        return dateString;
+      }
+    },
+    visibleRows(sampleData) {
+      return (sampleData || []).slice(0, MAX_PREVIEW_ROWS);
     },
     tableKeys(row) {
       if (!row) return [];
       return Object.keys(row).filter(k => k !== "id");
     },
-    
-    async openModal(pipeline) {
+    async openFullDataModal(pipeline) {
       this.modalPipeline = pipeline;
       this.showModal = true;
       this.modalData = null; 
-
       try {
         const response = await getPipelineData(pipeline.id);
         this.modalData = Object.freeze(response.data.data);
@@ -133,7 +193,6 @@ export default {
         this.modalData = [];
       }
     },
-    
     closeModal() {
       this.showModal = false;
       this.modalPipeline = null;
@@ -143,127 +202,4 @@ export default {
 };
 </script>
 
-<style scoped>
-.pipeline {
-  background: linear-gradient(135deg, #f8fafc 0%, #e9eff6 100%);
-  margin: 32px 0;
-  padding: 28px 22px;
-  border-radius: 14px;
-  border: 1.5px solid #b2c1da;
-  box-shadow: 0 2px 12px rgba(3, 26, 73, 0.08), 0 1.5px 0.5px rgba(0,0,0,0.02);
-  transition: box-shadow 0.2s;
-}
-.pipeline:hover {
-  box-shadow: 0 6px 28px rgba(3, 26, 73, 0.13);
-}
-.table-preview {
-  overflow-x: auto;
-  border-radius: 8px;
-  background: #fff;
-  max-width: 100%;
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-th, td {
-  border: 1px solid #ccc;
-  padding: 8px;
-  text-align: left;
-  min-width: 120px;
-}
-
-.null-value {
-  color: #94a3b8; 
-  font-style: italic;
-  font-size: 0.9em;
-}
-
-@media (max-width: 768px) {
-  table, thead, tbody, th, td, tr {
-    display: block;
-  }
-  thead tr {
-    display: none;
-  }
-  td {
-    position: relative;
-    padding-left: 50%;
-    border: none;
-    border-bottom: 1px solid #ccc;
-  }
-  td::before {
-    position: absolute;
-    top: 8px;
-    left: 10px;
-    width: 45%;
-    white-space: nowrap;
-    font-weight: bold;
-    content: attr(data-label);
-  }
-}
-
-.table-ellipsis {
-  text-align: center;
-  font-size: 0.5rem;
-  color: #031a49;
-  font-weight: bold;
-}
-.status-success { color: green; }
-.status-failed { color: red; }
-.status-running { color: orange; }
-
-.modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.modal-content {
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 8px 48px #031a4925;
-  padding: 2em;
-  min-width: 600px;
-  max-width: 90vw;
-  max-height: 90vh;
-  overflow-y: auto;
-  position: relative;
-}
-.modal-close-btn {
-  display: block;
-  margin: 1em auto 0 auto;
-  padding: 8px 24px;
-  font-size: 1.1em;
-  border-radius: 6px;
-  border: none;
-  background: #e9eff6;
-  cursor: pointer;
-  transition: background .2s;
-}
-.modal-close-btn:hover {
-  background: #b2c1da;
-}
-.ellipsis-btn {
-  background: #f3f6fb;
-  border: 1.5px solid #b2c1da;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: bold;
-  color: #46597a;
-  padding: 4px 16px;
-  cursor: pointer;
-  box-shadow: 0 1px 4px rgba(3, 26, 73, 0.05);
-  transition: background .18s, border-color .18s, color .18s;
-  margin: 0 auto;
-  display: inline-block;
-}
-.ellipsis-btn:hover {
-  background: #e9eff6;
-  border-color: #7a95b8;
-  color: #284363;
-}
-</style>
+<style src="./styles/Dashboard.css"></style>

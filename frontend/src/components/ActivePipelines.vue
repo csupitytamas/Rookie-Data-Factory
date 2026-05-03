@@ -15,7 +15,7 @@
         <td>{{ pipeline.pipeline_name }}</td>
         <td>{{ pipeline.alias || pipeline.source }}</td>
         <td>
-          <button @click="configurePipeline(pipeline)">
+          <button @click="configurePipeline(pipeline)" class="btn-icon">
             ⚙️
           </button>
         </td>
@@ -65,52 +65,5 @@ export default {
   }
 };
 </script>
-<style scoped>
-.container {
-  width: 80%;
-  margin: auto;
-  padding: 20px;
-  background: #f2f2f2;
-  border-radius: 10px;
-  text-align: center;
-}
-.action-button {
-  width: 40%;
-  background-color: #007bff;
-  color: white;
-  padding: 10px;
-  border: none;
-  border-radius: 5px;
-  margin: 10px 0;
-  cursor: pointer;
-  font-size: 16px;
-}
 
-.action-button:hover {
-  background-color: #0056b3;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 20px;
-}
-
-th,
-td {
-  padding: 12px;
-  border-bottom: 1px solid #ccc;
-  text-align: left;
-}
-
-button {
-  background-color: transparent;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-}
-
-button:hover {
-  color: #007bff;
-}
-</style>
+<style src="./styles/ActivePipelines.css"></style>

@@ -1,9 +1,20 @@
 import sqlalchemy as sa
 import json
 import os
+import re
 from logic.type_converter import map_to_postgresql_type, guess_type
-from transforms.field_mapping import get_final_selected_columns, get_final_column_order, get_all_final_columns
+from transforms.field_mapping import get_final_column_order, get_all_final_columns
 
+def sanitize_column_name(col_name):
+    if not isinstance(col_name, str):
+        return str(col_name)
+    name = col_name.replace("count(*)", "count_all")
+    name = re.sub(r'[^a-zA-Z0-9]', '_', name)
+    name = re.sub(r'_+', '_', name)
+    name = name.strip('_')
+    if not name:
+        name = "unnamed_column"
+    return name
 
 def create_table(pipeline_id, **kwargs):
     db_url = os.getenv("DB_URL") or os.getenv("AIRFLOW__DATABASE__SQL_ALCHEMY_CONN")
@@ -15,7 +26,6 @@ def create_table(pipeline_id, **kwargs):
         query = sa.text("""
                         SELECT target_table_name,
                                field_mappings,
-                               selected_columns,
                                column_order,
                                update_mode,
                                group_by_columns,
@@ -28,7 +38,6 @@ def create_table(pipeline_id, **kwargs):
         result = conn.execute(query, {"id": pipeline_id}).mappings().first()
         table_name = result['target_table_name']
         field_mappings = result['field_mappings']
-        selected_columns = result['selected_columns']
         column_order = result['column_order']
         update_mode = result['update_mode']
         group_by_columns = result.get('group_by_columns')
@@ -37,8 +46,6 @@ def create_table(pipeline_id, **kwargs):
 
         if isinstance(field_mappings, str):
             field_mappings = json.loads(field_mappings)
-        if isinstance(selected_columns, str):
-            selected_columns = json.loads(selected_columns)
         if isinstance(column_order, str):
             column_order = json.loads(column_order)
         if isinstance(group_by_columns, str):
@@ -85,20 +92,13 @@ def create_table(pipeline_id, **kwargs):
             elif props.get("rename") and props.get("newName") == "id":
                 props["newName"] = "source_id"
 
-        if not selected_columns and field_mappings:
-            selected_columns = list(field_mappings.keys())
-
         if not column_order and field_mappings:
             column_order = list(field_mappings.keys())
 
         unique_cols = [col for col, props in field_mappings.items() if props.get("unique")] if field_mappings else []
 
-        final_selected_columns = get_final_selected_columns(selected_columns, field_mappings)
-        final_column_order = get_final_column_order(column_order, field_mappings)
-
         final_columns = get_all_final_columns(
-            selected_columns=final_selected_columns,
-            column_order=final_column_order,
+            column_order=column_order,
             field_mappings=field_mappings
         )
 
@@ -135,11 +135,14 @@ def create_table(pipeline_id, **kwargs):
 
         column_defs = []
         for col in final_columns:
+            # Fontos: a tábla létrehozásakor is sanitizáljuk a nevet!
+            clean_col = sanitize_column_name(col)
+            
             props = next((p for k, p in field_mappings.items()
                           if (p.get("rename") and p.get("newName") == col) or (not p.get("rename") and k == col)), {})
             raw_type = props.get('type', 'string')
             col_type = map_to_postgresql_type(raw_type)
-            col_def = f'"{col}" {col_type}'
+            col_def = f'"{clean_col}" {col_type}'
 
             if update_mode == "upsert" and props.get('unique'):
                 col_def += " UNIQUE"

@@ -134,9 +134,9 @@ label {
 }
 
 .form-control:focus {
-  border-color: #007bff;
+  border-color: #07085e;
   outline: none;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+  box-shadow: 0 0 0 3px rgba(7, 8, 94, 0.1);
 }
 
 .mt-3 {

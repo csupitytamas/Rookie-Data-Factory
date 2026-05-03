@@ -1,91 +1,112 @@
 from typing import List, Dict, Any, Optional
 import logging
 import requests
+import os
+import json
 from connectors.base import BaseConnector
 
 logger = logging.getLogger(__name__)
 
 class OECDConnector(BaseConnector):
     """
-    OECD API connector - Teljesen automatizált indikátor-listázással.
+    OECD API connector - With automated dataflow discovery and caching.
     """
+
+    _cache_file = os.path.join(os.path.dirname(__file__), "oecd_dataflows.json")
 
     def __init__(self, **kwargs):
         conn_id = kwargs.pop("conn_id", "oecd_api")
         base_url_fallback = kwargs.pop("base_url_fallback", "https://sdmx.oecd.org/public/rest")
         super().__init__(conn_id=conn_id, base_url_fallback=base_url_fallback, **kwargs)
 
-    def get_filter_options(self) -> dict:
-            """
-            Az összes kért indikátor listája. 
-            A build_url automatikusan ki fogja szűrni a lényeget, ha URL-t másolsz be.
-            """
-            options = [
-                {
-                    "label": "Agri-environmental indicators: all data", 
-                    "value": "OECD.TAD.ARP,DSD_AGRI_ENV@DF_AEI,1.1/.A.TOTAGR_LAND...."
-                },
-                {
-                    "label": "Trust, security and dignity - government at a glance indicators", 
-                    "value": "https://sdmx.oecd.org/public/rest/data/OECD.GOV.GIP,DSD_GOV_INT@DF_GOV_TDG_2025,1.1/A.......?startPeriod=2019"
-                },
-                {
-                    "label": "Satisfaction with public services - government at a glance indicators", 
-                    "value": "OECD.GOV.GIP,DSD_GOV_INT@DF_GOV_SPS_2025,1.1/A.AUS......"
-                },
-                {
-                    "label": "Adequacy of minimum income benefits", 
-                    "value": "OECD.ELS.JAI,DSD_TAXBEN_IA@DF_IA,1.0/..PT_INC_DISP_HH_MEDIAN.S_C0+C_C2...YES+NO.A"
-                },
-                {
-                    "label": "Annual net and gross earnings of minimum wage earners", 
-                    "value": "OECD.ELS.JAI,DSD_TAXBEN_IMW@DF_IMW,1.0/.GFE+NFI.XDC+PT_INC_DISP_HH_TP_REF_WG_A.S_C0+C_C2.._Z+NOEARN_UNEMP_WO_CONBEN.YES+NO.YES+NO.FT_ISICCK.MW_DATE.A"
-                },
-                {
-                    "label": "Average annual hours actually worked per worker", 
-                    "value": "OECD.ELS.SAE,DSD_HW@DF_AVG_ANN_HRS_WKD,1.0/AUS+AUT+BEL+CAN+CHL+COL+CRI+CZE+DNK+EST+FIN+FRA+DEU+GRC+HUN+ISL+IRL+ISR+ITA+JPN+KOR+LVA+LTU+LUX+MEX+NLD+NZL+NOR+POL+PRT+SVK+SVN+ESP+SWE+CHE+TUR+GBR+USA+OECD........_T...."
-                },
-                {
-                    "label": "Average annual wages", 
-                    "value": "OECD.ELS.SAE,DSD_EARNINGS@AV_AN_WAGE,1.0/all"
-                },
-                {
-                    "label": "Trade in Value Added (TiVA) 2025 edition: Origin of value added in final demand", 
-                    "value": "OECD.STI.PIE,DSD_TIVA_FDVA@DF_FDVA,1.1/.._T.W._T..A"
-                }
-            ]
+    def _get_cached_dataflows(self) -> Optional[List[Dict[str, str]]]:
+        if os.path.exists(self._cache_file):
+            try:
+                with open(self._cache_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data and len(data) > 5: # Csak ha tényleg megvan a nagy lista
+                        return data
+            except Exception as e:
+                logger.error(f"Error reading OECD cache: {e}")
+        return None
 
-            return {
-                "indicator": {
-                    "type": "select",
-                    "required": True,
-                    "label": "OECD Adathalmaz",
-                    "description": "Válassz a listából, vagy másolj be egy OECD API URL-t",
-                    "options": options
-                }
+    def _save_dataflows_to_cache(self, dataflows: List[Dict[str, str]]):
+        try:
+            with open(self._cache_file, "w", encoding="utf-8") as f:
+                json.dump(dataflows, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"Error writing OECD cache: {e}")
+
+    def get_filter_options(self, current_params: Dict[str, Any] = None) -> dict:
+        options = self._get_cached_dataflows()
+
+        if not options:
+            logger.info("OECD dataflow cache empty or too small, fetching from API (this may take 20-30s)...")
+            fallback_options = [
+                {"label": "Average annual hours actually worked per worker", "value": "OECD.ELS.SAE,DSD_HW@DF_AVG_ANN_HRS_WKD,1.0/all"},
+                {"label": "Average annual wages", "value": "OECD.ELS.SAE,DSD_EARNINGS@AV_AN_WAGE,1.0/all"},
+                {"label": "Satisfaction with public services", "value": "OECD.GOV.GIP,DSD_GOV_INT@DF_GOV_SPS_2025,1.1/all"},
+                {"label": "Trade in Value Added (TiVA) 2023", "value": "OECD.STI.PIE,DSD_TIVA_2023@DF_TIVA_2023,1.0/all"}
+            ]
+            options = fallback_options
+            
+            try:
+                url = f"{self.base_url_fallback}/dataflow/all/all/latest"
+                # Az OECD szereti a konkrét Accept fejlécet
+                headers = {"Accept": "application/json, text/plain, */*"}
+                resp = requests.get(url, headers=headers, timeout=45) # 45 másodpercre emelve
+                
+                if resp.status_code == 200:
+                    data = resp.json()
+                    fetched = []
+                    # Az SDMX JSON struktúra bejárása
+                    dataflows = data.get("data", {}).get("dataflows", [])
+                    for df in dataflows:
+                        df_id = df.get("id")
+                        agency = df.get("agencyID")
+                        version = df.get("version", "1.0")
+                        name = df.get("name", df_id)
+                        
+                        if df_id and agency:
+                            value = f"{agency},{df_id},{version}/all"
+                            fetched.append({"label": name, "value": value})
+                    
+                    if len(fetched) > 10:
+                        options = sorted(fetched, key=lambda x: x["label"])
+                        self._save_dataflows_to_cache(options)
+                        logger.info(f"Successfully cached {len(options)} OECD dataflows.")
+                else:
+                    logger.warning(f"OECD API returned status {resp.status_code}")
+            except Exception as e:
+                logger.error(f"Failed to fetch OECD dataflows: {e}")
+
+        return {
+            "indicator": {
+                "type": "select",
+                "required": True,
+                "label": "OECD Dataset (Dataflow)",
+                "description": "Select from thousands of OECD datasets",
+                "options": options
             }
+        }
 
     def build_url(self, endpoint: str, parameters: Dict[str, Any]) -> str:
-        """
-        OECD SDMX REST URL építése tiszta azonosítóból vagy teljes URL-ből.
-        """
-        indicator = parameters.get("indicator")
+        def get_clean_value(key: str):
+            val = parameters.get(key)
+            if isinstance(val, dict): return val.get("value")
+            return val
+
+        indicator = get_clean_value("indicator")
         if not indicator:
             raise ValueError("OECD connector requires 'indicator' parameter.")
 
-        # Tisztítás: ha teljes URL-t kapunk, kivágjuk a lényeget
         if "http" in indicator and "/data/" in indicator:
             indicator = indicator.split("/data/")[1]
-            if "?" in indicator:
-                indicator = indicator.split("?")[0]
+            if "?" in indicator: indicator = indicator.split("?")[0]
         
-        # Végpont összeállítása
         url = f"data/{indicator}"
-        
-        # Minden dimenziót kérünk a helyes parzoláshoz
         params = {"dimensionAtObservation": "AllDimensions"}
         
-        # UI paraméterek átadása
         if "startPeriod" in parameters: params["startPeriod"] = parameters["startPeriod"]
         if "endPeriod" in parameters: params["endPeriod"] = parameters["endPeriod"]
 
@@ -93,9 +114,12 @@ class OECDConnector(BaseConnector):
         return f"{url}?{query_string}"
 
     def parse_response(self, response) -> List[Dict[str, Any]]:
-        # (A korábbi, már jól működő golyóálló parser kódod marad itt változatlanul...)
         try:
-            data = response.json()
+            if hasattr(response, 'json'):
+                data = response.json()
+            else:
+                import json
+                data = json.loads(response)
         except:
             return []
         
@@ -103,13 +127,17 @@ class OECDConnector(BaseConnector):
         datasets = root.get("dataSets", [])
         if not datasets: return []
 
+        structure = None
         if "structures" in root and isinstance(root["structures"], list) and len(root["structures"]) > 0:
             structure = root["structures"][0]
-        else:
-            structure = root.get("structure", {})
+        elif "structure" in root:
+            structure = root["structure"]
+            
+        if not structure: return []
             
         dimensions = structure.get("dimensions", {})
         dimensions_list = []
+        
         if isinstance(dimensions, list):
             dimensions_list = dimensions
         elif isinstance(dimensions, dict):
@@ -132,9 +160,12 @@ class OECDConnector(BaseConnector):
             parts = str(obs_key).split(":")
             for i, dim_key in enumerate(dim_keys):
                 if i < len(parts):
-                    idx = int(parts[i]) if parts[i].isdigit() else 0
-                    if idx < len(dim_values.get(dim_key, [])):
-                        record[dim_key.lower()] = dim_values[dim_key][idx]
+                    try:
+                        idx = int(parts[i])
+                        if idx < len(dim_values.get(dim_key, [])):
+                            record[dim_key.lower()] = dim_values[dim_key][idx]
+                    except:
+                        record[dim_key.lower()] = parts[i]
             
             val = obs_value[0] if isinstance(obs_value, list) and len(obs_value) > 0 else obs_value
             record["value"] = val
@@ -143,7 +174,7 @@ class OECDConnector(BaseConnector):
         return normalized
 
     def fetch(self, endpoint: str, parameters: Dict[str, Any], **kwargs) -> List[Dict[str, Any]]:
-        url = self.build_url(endpoint, parameters)
+        url_path = self.build_url(endpoint, parameters)
         headers = {"Accept": "application/vnd.sdmx.data+json; charset=utf-8; version=2.0, application/json"}
-        response = self.make_request(url, headers=headers)
+        response = self.make_request(url_path, headers=headers)
         return self.parse_response(response)

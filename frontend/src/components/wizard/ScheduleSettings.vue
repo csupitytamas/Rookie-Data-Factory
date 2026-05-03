@@ -8,10 +8,10 @@
         <div class="form-row">
           <label>Schedule Frequency:</label>
           <select v-model="store.config.schedule" class="form-control">
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-            <option value="hourly">Hourly</option>
+            <option value="@daily">Daily</option>
+            <option value="@weekly">Weekly</option>
+            <option value="@monthly">Monthly</option>
+            <option value="@hourly">Hourly</option>
             <option value="once">Once</option>
             <option value="custom">Custom</option>
           </select>
@@ -103,9 +103,10 @@ const loadingColumns = ref(false);
 
 const availablePipelines = ref<any[]>([]);
 
-if(!store.config.condition) store.config.condition = "none";
-if(!store.config.schedule) store.config.schedule = "daily";
-if (!store.config.parameters) store.config.parameters = {};
+// DEBUG: Figyeljük, mikor változik meg az ütemezés
+watch(() => store.config.schedule, (newVal) => {
+  console.log("SCHEDULE CHANGED IN STORE TO:", newVal);
+});
 
 onMounted(async () => {
   try {
@@ -268,7 +269,7 @@ label {
   font-weight: bold;       
   padding: 10px 20px;
   color: #333;
-  border: 2px solid #007bff; 
+  border: 2px solid #07085e; 
   border-radius: 6px;
   background-color: #fff;
   text-align: center;      
@@ -279,7 +280,7 @@ label {
 
 .time-input-large:hover,
 .time-input-large:focus {
-  box-shadow: 0 0 10px rgba(0, 123, 255, 0.3);
+  box-shadow: 0 0 10px rgba(7, 8, 94, 0.3);
   border-color: #0056b3;
 }
 
@@ -306,7 +307,7 @@ label {
   justify-content: center;
   padding: 25px 20px;
   background-color: #fcfcfc;
-  border: 2px dashed #007bff;
+  border: 2px dashed #07085e;
   border-radius: 8px;
   color: #555;
   cursor: pointer;
@@ -357,4 +358,4 @@ label {
   from { opacity: 0; transform: translateY(-5px); }
   to { opacity: 1; transform: translateY(0); }
 }
-</style>
+</style>le>

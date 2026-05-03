@@ -2,7 +2,7 @@
   <div class="history-page">
     <div class="header">
       <h2>Execution History</h2>
-      <button @click="refreshHistory" class="btn-refresh">Refresh</button>
+      <button @click="refreshHistory" class="btn-refresh btn-primary">Refresh</button>
     </div>
 
     <div v-if="loading" class="loading-state">
@@ -72,14 +72,14 @@
         <div class="modal-footer">
           <button 
             @click="downloadLogs" 
-            class="btn-download" 
-            :class="{ 'btn-success': isSuccess }"
+            class="btn-download btn-success" 
+            :class="{ 'success-mode': isSuccess }"
             :disabled="!currentLogs || logLoading || isSaving"
           >
             {{ isSaving ? 'Saving...' : (isSuccess ? 'Success!' : 'Download') }} 
           </button>
           
-          <button @click="closeLogs" class="btn-close">Close</button>
+          <button @click="closeLogs" class="btn-close btn-secondary">Close</button>
         </div>
       </div>
     </div>
@@ -95,6 +95,7 @@ import axios from 'axios';
 const historyItems = ref([]);
 const loading = ref(true);
 const error = ref(null);
+const userTimezone = ref('UTC'); 
 
 const showLogModal = ref(false);
 const logLoading = ref(false);
@@ -105,21 +106,33 @@ const isSuccess = ref(false);
 
 const formatDate = (dateString) => {
   if (!dateString) return '-';
-  return new Date(dateString).toLocaleString('hu-HU', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
-  });
+  try {
+    let date;
+    if (typeof dateString === 'string' && !dateString.includes('Z') && !dateString.includes('+')) {
+      date = new Date(dateString + 'Z');
+    } else {
+      date = new Date(dateString);
+    }
+    return date.toLocaleString('hu-HU', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+      timeZone: userTimezone.value
+    });
+  } catch (e) {
+    return dateString;
+  }
 };
 
 const refreshHistory = async () => {
   loading.value = true;
   error.value = null;
   try {
+    const settingsRes = await axios.get('http://localhost:8000/etl/settings/');
+    userTimezone.value = settingsRes.data?.timezone || 'Europe/Budapest';
     const response = await getPipelineHistory();
     historyItems.value = response.data;
   } catch (err) {
-    console.error("Failed to load history:", err);
-    error.value = "Failed to load history data. Please ensure the backend is running.";
+    error.value = "Failed to load history data.";
   } finally {
     loading.value = false;
   }
@@ -131,300 +144,43 @@ const viewLogs = async (pipelineId) => {
   currentLogs.value = "";
   currentPipelineId.value = pipelineId; 
   isSuccess.value = false; 
-  
   try {
     const response = await getPipelineLogs(pipelineId);
     currentLogs.value = response.data.logs;
   } catch (err) {
-    console.error("Log fetch error:", err);
-    currentLogs.value = "Failed to fetch logs. " + (err.response?.data?.detail || err.message);
+    currentLogs.value = "Failed to fetch logs.";
   } finally {
     logLoading.value = false;
   }
 };
 
-// --- LETÖLTÉS LOGIKA (Pipeline névvel) ---
 const downloadLogs = async () => {
   if (!currentLogs.value) return;
   isSaving.value = true;
-  isSuccess.value = false;
-
   try {
     const settingsRes = await axios.get('http://localhost:8000/etl/settings/');
     const basePath = settingsRes.data?.download_path;
-
-    if (!basePath) {
-      console.warn("There is path set!");
-      isSaving.value = false;
-      return;
-    }
+    if (!basePath) return;
 
     const dateStr = new Date().toISOString().replace(/:/g, '-').slice(0, 19); 
-    
-    // Pipeline név megkeresése és tisztítása
     const pipeline = historyItems.value.find(item => item.id === currentPipelineId.value);
-    const safePipelineName = pipeline && pipeline.pipeline_name 
-      ? pipeline.pipeline_name.replace(/[^a-zA-Z0-9\-_]/g, '_') 
-      : `pipeline_${currentPipelineId.value}`;
+    const safeName = pipeline?.pipeline_name.replace(/[^a-zA-Z0-9]/g, '_') || 'logs';
+    const fileName = `${safeName}_${dateStr}.txt`;
 
-    const fileName = `${safePipelineName}_logs_${dateStr}.txt`;
-
-    if (window.electron && window.electron.saveFileToFolder) {
-      const result = await window.electron.saveFileToFolder({
-        fileName: fileName,
-        fileContent: currentLogs.value,
-        basePath: basePath,
-        subFolder: 'Logs'
-      });
-
-      if (result.success) {
-        isSuccess.value = true;
-        setTimeout(() => { isSuccess.value = false; }, 1000);
-      } else {
-        console.error("Save error:", result.error);
-      }
-    } else {
-      const blob = new Blob([currentLogs.value], { type: 'text/plain' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
-      
+    if (window.electron?.saveFileToFolder) {
+      await window.electron.saveFileToFolder({ fileName, fileContent: currentLogs.value, basePath, subFolder: 'Logs' });
       isSuccess.value = true;
-      setTimeout(() => { isSuccess.value = false; }, 3000);
+      setTimeout(() => { isSuccess.value = false; }, 2000);
     }
-  } catch (error) {
-    console.error("Error:", error);
+  } catch (e) {
+    console.error(e);
   } finally {
     isSaving.value = false;
   }
 };
 
-const closeLogs = () => {
-  showLogModal.value = false;
-};
-
-onMounted(() => {
-  refreshHistory();
-});
+const closeLogs = () => { showLogModal.value = false; };
+onMounted(refreshHistory);
 </script>
 
-<style scoped>
-.history-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.table-container {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-  overflow: hidden;
-}
-
-.history-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.history-table th, .history-table td {
-  padding: 12px 15px;
-  text-align: left;
-  border-bottom: 1px solid #eee;
-}
-
-.history-table th {
-  background-color: #f8f9fa;
-  font-weight: 600;
-  color: #333;
-}
-
-.history-table tr:hover {
-  background-color: #f1f1f1;
-}
-
-.status-badge {
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 0.85em;
-  font-weight: bold;
-  text-transform: uppercase;
-}
-.status-badge.success { background-color: #d4edda; color: #155724; }
-.status-badge.failed { background-color: #f8d7da; color: #721c24; }
-.status-badge.running { background-color: #cce5ff; color: #004085; }
-.status-badge.queued { background-color: #e2e3e5; color: #383d41; }
-
-.btn-refresh {
-  background-color: #007bff;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.btn-back {
-  display: inline-block;
-  margin-top: 20px;
-  text-decoration: none;
-  color: #6c757d;
-  font-weight: bold;
-}
-
-.loading-state, .error-state, .empty-state {
-  text-align: center;
-  padding: 40px;
-  background: #fff;
-  border-radius: 8px;
-}
-.error-state { color: red; }
-
-.btn-logs {
-  background-color: #6c757d;
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9em;
-  transition: background 0.2s;
-}
-.btn-logs:hover {
-  background-color: #5a6268;
-}
-
-/* Modal Stílusok */
-.modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background-color: rgba(0, 0, 0, 0.6);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-  backdrop-filter: blur(2px);
-}
-
-.modal-content {
-  background: white;
-  width: 90%;
-  max-width: 1000px;
-  height: 80vh;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-}
-
-.modal-header {
-  padding: 15px 20px;
-  border-bottom: 1px solid #eee;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.modal-body {
-  flex: 1;
-  overflow: hidden;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.btn-close-x {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
-  color: #666;
-}
-
-.log-loading {
-  padding: 40px;
-  text-align: center;
-  font-style: italic;
-  color: #666;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
-}
-
-.log-viewer {
-  flex: 1;
-  background-color: #1e1e1e;
-  color: #d4d4d4;
-  padding: 20px;
-  margin: 0;
-  overflow-y: auto;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  white-space: pre-wrap;
-}
-
-.modal-footer {
-  padding: 15px 20px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px; 
-  background-color: #f8f9fa;
-  border-top: 1px solid #eee;
-}
-
-.btn-close {
-  background-color: #6c757d;
-  color: white;
-  border: none;
-  padding: 8px 20px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.btn-close:hover { background-color: #5a6268; }
-
-.btn-download {
-  background-color: #28a745; 
-  color: white;
-  border: none;
-  padding: 8px 20px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: background-color 0.3s ease;
-  min-width: 105px;
-}
-.btn-download:hover { background-color: #218838; }
-
-.btn-download:disabled { 
-  background-color: #94d3a2; 
-  cursor: not-allowed; 
-}
-
-.btn-success {
-  background-color: #20c997 !important;
-  color: white !important;
-}
-.btn-success:hover {
-  background-color: #1aa179 !important;
-}
-
-.spinner.small {
-  width: 20px;
-  height: 20px;
-  border-width: 2px;
-}
-</style>
+<style src="./styles/History.css"></style>

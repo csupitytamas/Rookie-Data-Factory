@@ -43,8 +43,14 @@ def create_pipeline(
         db.refresh(new_pipeline)
 
         # 2. JAVÍTÁS: Az Airflow indítását betesszük a háttérbe
-        # A függvényt és a paramétert adjuk át, a FastAPI fogja meghívni külön szálon
+        # 2a. Frissítjük a metadata cache-t (Variable), hogy a generátor lássa az új pipeline-t
+        background_tasks.add_task(trigger_airflow_dag_with_retry, "refresh_pipeline_metadata")
+        
+        # 2b. Megpróbáljuk elindítani a konkrét pipeline-t (ha a generátor már végzett, ez sikerül)
         background_tasks.add_task(trigger_airflow_dag_with_retry, new_pipeline.dag_id)
+        
+        # 2c. Azonnali státusz szinkronizáció indítása is
+        background_tasks.add_task(trigger_airflow_dag_with_retry, "status_sync_dag")
 
         # 3. Azonnali válasz a Frontendnek - nincs több fagyás!
         return new_pipeline
@@ -96,11 +102,11 @@ def updated_pipeline(
         raise HTTPException(status_code=404, detail="Pipeline not found")
 
     try:
-        updated_data = config.dict(exclude_unset=True)
+        # Itt nem használjuk az exclude_unset=True-t, mert minden adatot akarunk
+        updated_data = config.model_dump() 
         
-        # --- EZ A JAVÍTÁS: Töröljük a felesleges kulcsokat ---
-        # Ez megvédi a szervert attól, ha a frontend túl sok adatot küld
-        keys_to_remove = ["pipeline_name", "version", "target_table_name", "dag_id"]
+        # Töröljük a tiltott kulcsokat, amiket a backend generál
+        keys_to_remove = ["pipeline_name", "version", "target_table_name", "dag_id", "id", "created_at", "modified_at"]
         for key in keys_to_remove:
             updated_data.pop(key, None)
         # -----------------------------------------------------
@@ -183,7 +189,7 @@ async def upload_extra_file(file: UploadFile = File(...)):
             
         # 2. Docker-kompatibilis útvonal visszaadása az Airflow számára
         # Mivel az Airflow a 'backend/src' mappát látja '/opt/backend/src'-ként:
-        airflow_path = f"/opt/backend/src/shared_uploads/{file.filename}"
+        airflow_path = f"/opt/airflow/plugins/shared_uploads/{file.filename}"
 
         return {
             "message": "Sikeres feltöltés",

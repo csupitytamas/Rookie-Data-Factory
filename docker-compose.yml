@@ -29,7 +29,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
+    volumes:
+      - shared_uploads:/app/src/shared_uploads
 
   # 3. FRONTEND (Vue.js)
   frontend:
@@ -42,7 +43,7 @@ services:
 
   # 4. AIRFLOW INICIALIZÁLÓ
   airflow-init:
-    image: csupitytamas/rookie-airflow:v1.1
+    image: csupitytamas/rookie-airflow:v1.2
     env_file: .env
     depends_on:
       postgres:
@@ -53,7 +54,7 @@ services:
 
   # 5. AIRFLOW WEBSERVER
   airflow-webserver:
-    image: csupitytamas/rookie-airflow:v1.1
+    image: csupitytamas/rookie-airflow:v1.2
     restart: always
     env_file: .env
     depends_on:
@@ -68,11 +69,12 @@ services:
     volumes:
       - airflow_logs:/opt/airflow/logs
       - ./output:/opt/airflow/plugins/out/output
+      - shared_uploads:/opt/airflow/plugins/shared_uploads
     command: webserver
 
   # 6. AIRFLOW SCHEDULER
   airflow-scheduler:
-    image: csupitytamas/rookie-airflow:v1.1
+    image: csupitytamas/rookie-airflow:v1.2
     restart: always
     env_file: .env
     depends_on:
@@ -85,8 +87,10 @@ services:
     volumes:
       - airflow_logs:/opt/airflow/logs
       - ./output:/opt/airflow/plugins/out/output
+      - shared_uploads:/opt/airflow/plugins/shared_uploads
     command: scheduler
 
 volumes:
   postgres_data:
   airflow_logs:
+  shared_uploads:

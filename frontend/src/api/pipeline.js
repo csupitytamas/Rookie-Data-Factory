@@ -23,8 +23,8 @@ export const getSchemaBySource = (source) =>
 export const getFriendlySchemaBySource = (source) =>
   api.get(`${prefix}/schema/${source}/friendly`);
 
-export const getConnectorFilters = (connectorType) =>
-  api.get(`${prefix}/connector/${connectorType}/filters`);
+export const getConnectorFilters = (connectorType, params = {}) =>
+  api.get(`${prefix}/connector/${connectorType}/filters`, { params });
 
 export const getAvailableSources = () =>
   api.get(`${prefix}/available-sources`);

@@ -6,14 +6,6 @@ def resolve_final_column_name(column, field_mappings):
         return mapping["newName"]
     return column
 
-def get_final_selected_columns(selected_columns, field_mappings):
-    final_cols = []
-    for col in selected_columns:
-        final_name = resolve_final_column_name(col, field_mappings)
-        if final_name:
-            final_cols.append(final_name)
-    return final_cols
-
 def get_final_column_order(column_order, field_mappings):
     result = []
     for col in column_order:
@@ -22,13 +14,15 @@ def get_final_column_order(column_order, field_mappings):
             result.append(final_name)
     return result
 
-def get_all_final_columns(selected_columns, column_order, field_mappings):
-    selected_final = get_final_selected_columns(selected_columns, field_mappings)
+def get_all_final_columns(column_order, field_mappings):
+    """
+    Visszaadja az összes olyan oszlopot, ami nincs törölve, 
+    a megadott sorrendben.
+    """
     order_final = get_final_column_order(column_order, field_mappings)
-    columns = [col for col in order_final if col in selected_final]
-    return columns
+    return order_final
 
-def field_mapping_helper(field_mappings, selected_columns=None, column_order=None):
+def field_mapping_helper(field_mappings, column_order=None):
     columns = []
     for col, props in field_mappings.items():
         # Törölteket kihagyjuk
@@ -39,10 +33,6 @@ def field_mapping_helper(field_mappings, selected_columns=None, column_order=Non
         columns.append(final_name)
 
     columns = list(dict.fromkeys(columns))
-
-    if selected_columns:
-        final_selected = [resolve_final_column_name(c, field_mappings) for c in selected_columns]
-        columns = [col for col in columns if col in final_selected]
 
     if column_order:
         final_order = [resolve_final_column_name(c, field_mappings) for c in column_order]

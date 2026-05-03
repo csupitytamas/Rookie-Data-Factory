@@ -1,12 +1,13 @@
 
 .config-container {
-  max-width: 50%;
-  margin: 40px auto;
-  padding: 40px;
-  background-color: #f5f7fa;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  font-family: "Segoe UI", sans-serif;
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 30px;
+    background-color: #ffffff;
+    border-radius: 4px; /* Nagyon picit lekerekítve */
+    border: 2px solid #07085e;
+    box-shadow: 0 8px 24px rgba(7, 8, 94, 0.1);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 }
 
 h2 {
@@ -63,7 +64,7 @@ textarea {
 }
 
 button {
-  background-color: #007bff;
+  background-color: #07085e;
   color: white;
   padding: 12px 20px;
   font-size: 15px;
@@ -93,10 +94,10 @@ button:hover {
   display: block;
   width: 100%;
   padding: 12px;
-  border: 1px dashed #007bff;
+  border: 1px dashed #07085e;
   border-radius: 6px;
-  background-color: #e9f1ff;
-  color: #007bff;
+  background-color: #f8f9ff;
+  color: #07085e;
   text-align: center;
   cursor: pointer;
   font-size: 14px;
@@ -163,7 +164,7 @@ button:hover {
 .mapping-row {
   width: clamp(200px, 18%, 250px);
   background: #ffffff;
-  border: 1px dashed #bbb;
+  border: 1px dashed #07085e;
   border-radius: 8px;
   padding: 10px;
   display: flex;
@@ -237,186 +238,6 @@ button:hover {
 
 .drag-handle {
   cursor: grab;
-}
-
-/* API Parameters */
-.parameter-field {
-  margin-bottom: 16px;
-  padding: 12px;
-  background: #ffffff;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-}
-
-.parameter-field label {
-  display: block;
-  margin-bottom: 6px;
-  font-weight: 600;
-  color: #333;
-}
-
-.parameter-field .required {
-  color: #dc3545;
-  margin-left: 4px;
-}
-
-.parameter-field .param-description {
-  font-weight: normal;
-  color: #666;
-  font-size: 0.9em;
-  margin-left: 8px;
-}
-
-.parameter-field input[type="text"],
-.parameter-field input[type="number"],
-.parameter-field select {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 14px;
-  box-sizing: border-box;
-}
-
-.parameter-field .param-examples {
-  margin-top: 4px;
-  color: #666;
-  font-style: italic;
-}
-
-/* API Parameters */
-.parameter-field {
-  margin-bottom: 16px;
-  padding: 12px;
-  background: #ffffff;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-}
-
-.parameter-field label {
-  display: block;
-  margin-bottom: 6px;
-  font-weight: 600;
-  color: #333;
-}
-
-.parameter-field .required {
-  color: #dc3545;
-  margin-left: 4px;
-}
-
-.parameter-field .param-description {
-  font-weight: normal;
-  color: #666;
-  font-size: 0.9em;
-  margin-left: 8px;
-}
-
-.parameter-field input[type="text"],
-.parameter-field input[type="number"],
-.parameter-field select {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 14px;
-  box-sizing: border-box;
-}
-
-.parameter-field .param-examples {
-  margin-top: 4px;
-  color: #666;
-  font-style: italic;
-}
-
-/* API Parameters */
-.parameter-field {
-  margin-bottom: 16px;
-  padding: 12px;
-  background: #ffffff;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-}
-
-.parameter-field label {
-  display: block;
-  margin-bottom: 6px;
-  font-weight: 600;
-  color: #333;
-}
-
-.parameter-field .required {
-  color: #dc3545;
-  margin-left: 4px;
-}
-
-.parameter-field .param-description {
-  font-weight: normal;
-  color: #666;
-  font-size: 0.9em;
-  margin-left: 8px;
-}
-
-.parameter-field input[type="text"],
-.parameter-field input[type="number"],
-.parameter-field select {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 14px;
-  box-sizing: border-box;
-}
-
-.parameter-field .param-examples {
-  margin-top: 4px;
-  color: #666;
-  font-style: italic;
-}
-
-/* API Parameters */
-.parameter-field {
-  margin-bottom: 16px;
-  padding: 12px;
-  background: #ffffff;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-}
-
-.parameter-field label {
-  display: block;
-  margin-bottom: 6px;
-  font-weight: 600;
-  color: #333;
-}
-
-.parameter-field .required {
-  color: #dc3545;
-  margin-left: 4px;
-}
-
-.parameter-field .param-description {
-  font-weight: normal;
-  color: #666;
-  font-size: 0.9em;
-  margin-left: 8px;
-}
-
-.parameter-field input[type="text"],
-.parameter-field input[type="number"],
-.parameter-field select {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 14px;
-  box-sizing: border-box;
-}
-
-.parameter-field .param-examples {
-  margin-top: 4px;
-  color: #666;
-  font-style: italic;
 }
 
 /* API Parameters */

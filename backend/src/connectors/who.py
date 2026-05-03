@@ -90,7 +90,24 @@ class WHOConnector(BaseConnector):
         return out
 
     def fetch(self, endpoint: str, parameters: Dict[str, Any], **kwargs):
-        # A build_url most már a relatív URL-t adja vissza
+        indicator = parameters.get("indicator")
+        if not indicator:
+            raise ValueError("A WHO API-hoz 'indicator' paraméter megadása kötelező.")
+
         url = self.build_url(endpoint, parameters)
-        resp = self.make_request(url)
-        return self.parse_response(resp)
+        try:
+            resp = self.make_request(url)
+            data = self.parse_response(resp)
+
+            if not data:
+                # Megpróbálunk rájönni, miért üres
+                full_url = f"{self.base_url_fallback}/{url}"
+                raise ValueError(
+                    f"Az API nem adott vissza adatot a megadott indikátorra ('{indicator}'). "
+                    f"Ellenőrizd az indikátor kódot! (Próbált URL: {full_url})"
+                )
+            return data
+        except Exception as e:
+            if "404" in str(e):
+                raise ValueError(f"Az API végpont nem található. Valószínűleg hibás az indikátor kód: {indicator}")
+            raise e

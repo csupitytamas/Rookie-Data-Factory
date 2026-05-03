@@ -17,12 +17,14 @@ class BaseConnector(ABC):
         self,
         conn_id: str,
         base_url_fallback: str = None,
+        use_hook: bool = True,
         **kwargs
     ):
         self.conn_id = conn_id
         self.base_url_fallback = base_url_fallback
+        self.use_hook = use_hook
         
-        if AIRFLOW_AVAILABLE:
+        if AIRFLOW_AVAILABLE and use_hook:
             self.hook = HttpHook(http_conn_id=conn_id, method='GET')
         else:
             self.hook = None
@@ -40,21 +42,29 @@ class BaseConnector(ABC):
         headers: Optional[Dict[str, str]] = None,
         **kwargs
     ):
-        # 1. AIRFLOW MÓD (ETL futás)
+        # 1. AIRFLOW MÓD (ETL futás) - Próbáljuk a Hook-ot, ha kérték és létezik
         if self.hook:
-            logger.info(f"[{self.conn_id}] Airflow Hook kérés: /{endpoint}")
-            return self.hook.run(endpoint=endpoint, data=params, headers=headers, extra_options=kwargs)
+            try:
+                logger.info(f"[{self.conn_id}] Airflow Hook kérés: /{endpoint}")
+                return self.hook.run(endpoint=endpoint, data=params, headers=headers, extra_options=kwargs)
+            except Exception as e:
+                if "isn't defined" in str(e) or "AirflowNotFoundException" in str(e):
+                    logger.warning(f"Connection {self.conn_id} not found in Airflow, falling back to direct requests.")
+                    self.hook = None # Fallback to requests mode
+                    self.session = requests.Session()
+                else:
+                    raise e
             
-        # 2. FASTAPI BACKEND MÓD (UI szűrők lekérése)
-        else:
+        # 2. FASTAPI BACKEND MÓD VAGY FALLBACK
+        if not self.hook:
             url = f"{self.base_url_fallback}/{endpoint}" if self.base_url_fallback else endpoint
-            logger.info(f"[{self.conn_id}] FastAPI Fallback kérés: {url}")
+            logger.info(f"[{self.conn_id}] Direct Request (Fallback/Backend): {url}")
             
-            request_headers = self.session.headers.copy()
+            request_headers = getattr(self, 'session', requests.Session()).headers.copy()
             if headers:
                 request_headers.update(headers)
                 
-            response = self.session.request(
+            response = requests.request(
                 method=method,
                 url=url,
                 params=params,
@@ -66,7 +76,7 @@ class BaseConnector(ABC):
             return response
 
     @abstractmethod
-    def get_filter_options(self) -> dict:
+    def get_filter_options(self, current_params: Dict[str, Any] = None) -> dict:
         return {}
 
     @abstractmethod

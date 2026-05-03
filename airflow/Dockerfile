@@ -17,5 +17,9 @@ RUN pip install --no-cache-dir -r /requirements.txt
 COPY --chown=airflow:root ./dags /opt/airflow/dags
 COPY --chown=airflow:root ./plugins /opt/airflow/plugins
 
-# ÚTVONALAK FIXÁLÁSA: Hogy a 'from logic import...' és társai működjenek
+# ÚTVONALAK FIXÁLÁSA
 ENV PYTHONPATH="${PYTHONPATH}:/opt/airflow/plugins"
+
+# Kapcsolatok létrehozása (WHO, F1, Open-Meteo)
+# Ezt egy belépési pontként is használhatjuk
+COPY get_timezone.py /opt/airflow/get_timezone.py

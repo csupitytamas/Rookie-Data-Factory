@@ -25,7 +25,6 @@ class ETLConfig(Base):
     # Komplex konfigurációs mezők (JSON)
     field_mappings = Column(JSON, nullable=True)
     transformation = Column(JSON, nullable=True)
-    selected_columns = Column(JSON, nullable=True)
     column_order = Column(JSON, nullable=True)
     group_by_columns = Column(JSON, nullable=True)
 

@@ -10,6 +10,6 @@
 <style scoped>
 #app {
   padding: 20px;
-  font-family: sans-serif;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 }
 </style>

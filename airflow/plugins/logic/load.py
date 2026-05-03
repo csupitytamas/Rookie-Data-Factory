@@ -22,7 +22,7 @@ def sanitize_column_name(col_name):
     name = name.strip('_')
     if not name:
         name = "unnamed_column"
-    return name.lower()
+    return name
 
 def load_data(pipeline_id, **kwargs):
     ti = kwargs['ti']

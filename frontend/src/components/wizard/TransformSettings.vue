@@ -1,10 +1,10 @@
 <template>
   <div class="form-layout">
-    <h3>Transformations</h3>
+    <h3>Query Configuration</h3>
 
     <div class="content-width">
       <div class="form-row">
-        <label>Transformation Type:</label>
+        <label>Query Type:</label>
         <select v-model="transformationType" class="form-control">
           <option value="none">None</option>
           <option value="select">Simple Query</option>
@@ -14,48 +14,10 @@
 
       <div v-if="transformationType === 'select'" class="settings-box">
         <div class="form-row">
-          <label>Select Columns to Include:</label>
-          <div class="checkbox-group">
-            <div class="checkbox-actions">
-              <button type="button" @click="selectAll" class="action-btn">Select All</button>
-              
-              <button 
-                v-if="store.config.selected_columns.length === availableColumns.length && availableColumns.length > 0"
-                type="button" 
-                @click="deselectAll" 
-                class="action-btn clear-btn transition-fade" 
-                title="Deselect All"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <label 
-              v-for="col in availableColumns" 
-              :key="col" 
-              class="checkbox-item"
-              :class="{ 'inactive': !isSelected(col) }"
-            >
-              <input 
-                type="checkbox" 
-                :value="col" 
-                v-model="store.config.selected_columns" 
-              />
-              {{ col }}
-            </label>
-          </div>
-          <p v-if="store.config.selected_columns.length === 0" class="error-msg">
-            You must select at least one column!
-          </p>
-        </div>
-
-        <hr class="separator" />
-
-        <div class="form-row">
           <label>Group By Columns:</label>
           <div class="checkbox-group">
             <label 
-              v-for="col in availableColumns" 
+              v-for="col in activeColumns" 
               :key="col" 
               class="checkbox-item"
             >
@@ -63,9 +25,8 @@
                 type="checkbox" 
                 :value="col" 
                 v-model="store.config.group_by_columns" 
-                :disabled="!isSelected(col)"
               />
-              <span :class="{ 'disabled-text': !isSelected(col) }">{{ col }}</span>
+              <span>{{ col }}</span>
             </label>
           </div>
         </div>
@@ -75,10 +36,9 @@
           <select v-model="store.config.order_by_column" class="form-control">
             <option :value="null">Please Select</option>
             <option 
-              v-for="col in availableColumns" 
+              v-for="col in activeColumns" 
               :key="col" 
               :value="col"
-              :disabled="!isSelected(col)"
             >
               {{ col }}
             </option>
@@ -127,7 +87,7 @@
           
           <div class="column-tags">
             <span 
-              v-for="col in availableColumns" 
+              v-for="col in sourceColumns" 
               :key="col" 
               class="column-tag"
               @click="copyToClipboard(col)"
@@ -157,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { usePipelineStore } from '@/stores/pipelineStore';
 
 import { Codemirror } from 'vue-codemirror';
@@ -169,28 +129,40 @@ const extensions = [sql(), oneDark];
 
 const showSqlHint = ref(false);
 
-// --- ÚJ LOGIKA: Az availableColumns mostantól okos: kiszűri a törölteket és alkalmazza az átnevezéseket ---
-const availableColumns = computed(() => {
+const allMappedColumns = computed(() => {
   const order = store.config.column_order || [];
   const mappings = store.config.field_mappings || {};
 
-  return order.map(col => {
-    const mapping = mappings[col];
-    
-    // Ha törlésre van jelölve a Mappingnél, dobjuk el a listából
-    if (mapping && mapping.delete) {
-      return null;
-    }
-    
-    // Ha átnevezték, a "newName" kerül a listába
-    if (mapping && mapping.rename && mapping.newName && mapping.newName.trim() !== '') {
-      return mapping.newName.trim();
-    }
-    
-    // Alapértelmezett: marad az eredeti név
-    return col;
-  }).filter(Boolean); // Kiszűrjük a null értékeket
+  return order.map(origName => {
+    const mapping = mappings[origName];
+    const displayName = (mapping?.rename && mapping?.newName && mapping.newName.trim() !== '') 
+      ? mapping.newName.trim() 
+      : origName;
+    return {
+      origName,
+      displayName,
+      deleted: !!mapping?.delete
+    };
+  });
 });
+
+const activeColumns = computed(() => {
+  return allMappedColumns.value
+    .filter(c => !c.deleted)
+    .map(c => c.displayName);
+});
+
+const sourceColumns = computed(() => {
+  // SQL-nél az összes oszlop elérhető a nyers adatból
+  return store.config.column_order || [];
+});
+
+const toggleColumn = (origName: string) => {
+  if (!store.config.field_mappings[origName]) {
+    store.config.field_mappings[origName] = {};
+  }
+  store.config.field_mappings[origName].delete = !store.config.field_mappings[origName].delete;
+};
 
 const copyToClipboard = (text: string) => {
   navigator.clipboard.writeText(text).then(() => {
@@ -200,16 +172,12 @@ const copyToClipboard = (text: string) => {
   });
 };
 
-const isSelected = (col: string) => {
-  return store.config.selected_columns.includes(col);
-};
-
 const getInitialType = () => {
   if (store.config.custom_sql) return 'advenced';
   if (
     (store.config.group_by_columns && store.config.group_by_columns.length > 0) || 
     store.config.order_by_column ||
-    (store.config.selected_columns && store.config.selected_columns.length > 0 && store.config.selected_columns.length < availableColumns.value.length)
+    allMappedColumns.value.some(c => c.deleted)
   ) {
     return 'select';
   }
@@ -219,21 +187,22 @@ const getInitialType = () => {
 const transformationType = ref(getInitialType());
 
 const selectAll = () => {
-  store.config.selected_columns = [...availableColumns.value];
+  allMappedColumns.value.forEach(c => {
+    if (store.config.field_mappings[c.origName]) {
+      store.config.field_mappings[c.origName].delete = false;
+    }
+  });
 };
 
 const deselectAll = () => {
-  store.config.selected_columns = [];
+  allMappedColumns.value.forEach(c => {
+    if (store.config.field_mappings[c.origName]) {
+      store.config.field_mappings[c.origName].delete = true;
+    }
+  });
 };
 
-onMounted(() => {
-  // A korábbi módosítás alapján: Alapból üres lista várja a felhasználót
-  if (!store.config.selected_columns) {
-    store.config.selected_columns = [];
-  }
-});
-
-watch(transformationType, (newVal, oldVal) => {
+watch(transformationType, (newVal) => {
  if (!store.config.transformation) {
     store.config.transformation = {};
   }
@@ -244,32 +213,26 @@ watch(transformationType, (newVal, oldVal) => {
     store.config.group_by_columns = [];
     store.config.order_by_column = null;
     store.config.order_direction = 'asc';
-    store.config.selected_columns = [...availableColumns.value];
+    // Minden oszlop visszakapcsolása
+    selectAll();
   } 
   else if (newVal === 'select') {
     store.config.custom_sql = null;
     if (!store.config.group_by_columns) store.config.group_by_columns = [];
     if (!store.config.order_direction) store.config.order_direction = 'asc';
-    
-    // Ha most váltunk át, üres lappal indítunk
-    if (oldVal === 'none' || oldVal === 'advenced') {
-      store.config.selected_columns = [];
-    } else if (!store.config.selected_columns) {
-      store.config.selected_columns = [];
-    }
   }
   else if (newVal === 'advenced') {
     store.config.group_by_columns = [];
     store.config.order_by_column = null;
-    store.config.selected_columns = [];
   }
 });
 
-watch(() => store.config.selected_columns, (newSelected) => {
+// Szinkronizáció: ha egy oszlopot törlünk, vegyük ki a Group By-ból és Order By-ból is
+watch(activeColumns, (newActive) => {
   if (store.config.group_by_columns.length > 0) {
-     store.config.group_by_columns = store.config.group_by_columns.filter((col: string) => newSelected.includes(col));
+     store.config.group_by_columns = store.config.group_by_columns.filter((col: string) => newActive.includes(col));
   }
-  if (store.config.order_by_column && !newSelected.includes(store.config.order_by_column)) {
+  if (store.config.order_by_column && !newActive.includes(store.config.order_by_column)) {
      store.config.order_by_column = null;
   }
 }, { deep: true });
@@ -342,8 +305,8 @@ label {
 
 .hint-toggle-btn {
   background: #fff;
-  border: 1px solid #007bff;
-  color: #007bff;
+  border: 1px solid #07085e;
+  color: #07085e;
   padding: 5px 12px;
   border-radius: 4px;
   font-size: 0.85em;
@@ -353,7 +316,7 @@ label {
 }
 
 .hint-toggle-btn:hover {
-  background: #007bff;
+  background: #07085e;
   color: #fff;
 }
 
@@ -416,7 +379,7 @@ label {
 
 .info-banner {
   background-color: #e8f4fd;
-  border-left: 4px solid #007bff;
+  border-left: 4px solid #07085e;
   color: #004085;
   padding: 15px;
   border-radius: 4px;
@@ -455,11 +418,11 @@ label {
 }
 
 .column-tag:hover {
-  background-color: #007bff;
+  background-color: #07085e;
   color: #fff;
-  border-color: #007bff;
+  border-color: #07085e;
   transform: translateY(-1px);
-  box-shadow: 0 3px 6px rgba(0, 123, 255, 0.15);
+  box-shadow: 0 3px 6px rgba(7, 8, 94, 0.15);
 }
 
 .column-tag:active {
@@ -508,8 +471,8 @@ label {
 
 .action-btn {
   background-color: transparent;
-  border: 1px solid #007bff;
-  color: #007bff;
+  border: 1px solid #07085e;
+  color: #07085e;
   border-radius: 4px;
   padding: 5px 12px;
   font-size: 0.85em;
@@ -519,7 +482,7 @@ label {
 }
 
 .action-btn:hover {
-  background-color: #007bff;
+  background-color: #07085e;
   color: #fff;
 }
 

@@ -1,7 +1,8 @@
 from fastapi.middleware.cors import CORSMiddleware
 
 origins = [
-    "http://localhost:5173",  # Vue dev server
+    "http://localhost:5173",  # Vue dev server (default)
+    "http://localhost:5174",  # Vue dev server (port conflict alternative)
     "http://localhost",       # Electron
 ]
 
