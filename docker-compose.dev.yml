@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # 1. ADATBÁZIS
+  postgres:
+    image: postgres:13
+    container_name: rookie-data-factory-postgres-1
+
+  # 2. BACKEND
+  backend:
+    build: 
+      context: .
+      dockerfile: backend/Dockerfile
+    image: rookie-backend:dev
+    container_name: rookie-data-factory-backend-1
+    volumes:
+      - ./backend/src:/app/src
+      - ./airflow/dags:/app/src/airflow/dags/
+    command: >
+      sh -c "python src/database/init_db_manual.py && 
+             uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  # 3. FRONTEND
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: build-stage
+    image: rookie-frontend:dev
+    container_name: rookie-data-factory-frontend-1
+    ports:
+      - "5174:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+
+  # 4. AIRFLOW INICIALIZÁLÓ
+  airflow-init:
+    build:
+      context: ./airflow
+    image: rookie-airflow:dev
+    container_name: rookie-data-factory-airflow-init-1
+    command: >
+      bash -c "airflow db init && 
+      (airflow users create --username admin --password admin --firstname admin --lastname admin --role Admin --email admin@example.com || true)"
+
+  # 5. AIRFLOW WEBSERVER: Dinamikus időzónával
+  airflow-webserver:
+    image: rookie-airflow:dev
+    container_name: rookie-data-factory-airflow-webserver-1
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./output:/opt/airflow/plugins/out/output
+      - shared_uploads:/opt/airflow/plugins/shared_uploads
+    command: >
+      bash -c "export AIRFLOW__CORE__DEFAULT_TIMEZONE=$$(python /opt/airflow/get_timezone.py) && 
+               export AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE=$$AIRFLOW__CORE__DEFAULT_TIMEZONE &&
+               airflow webserver"
+
+  # 6. AIRFLOW SCHEDULER: Dinamikus időzónával
+  airflow-scheduler:
+    image: rookie-airflow:dev
+    container_name: rookie-data-factory-airflow-scheduler-1
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./output:/opt/airflow/plugins/out/output
+      - shared_uploads:/opt/airflow/plugins/shared_uploads
+    command: >
+      bash -c "export AIRFLOW__CORE__DEFAULT_TIMEZONE=$$(python /opt/airflow/get_timezone.py) && 
+               airflow scheduler"

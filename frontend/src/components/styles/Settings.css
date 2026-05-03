@@ -1,0 +1,30 @@
+.path-selector {
+  display: flex;
+  gap: 10px;
+}
+
+.path-input {
+  flex-grow: 1;
+  background-color: #f8f9fa; 
+  cursor: default;
+}
+
+.btn-browse {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0 15px;
+  cursor: pointer;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.btn-browse:hover { background-color: #5a6268; }
+
+.btn-save {
+  width: 100%;
+}
+
+.success-msg { color: #28a745; margin-top: 15px; font-weight: bold; text-align: center; }
+.error-msg { color: #dc3545; margin-top: 15px; font-weight: bold; text-align: center; }
