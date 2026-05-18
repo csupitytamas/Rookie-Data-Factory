@@ -5,22 +5,25 @@ import os
 import json
 from connectors.base import BaseConnector
 
+""" UniRate API Connector. """
+
 logger = logging.getLogger(__name__)
 
+# Specifikus API csatlakozó osztály
 class UniRateConnector(BaseConnector):
-    """
-    UniRate API connector for exchange rates and currency conversion.
-    Optimized with local caching for currency lists.
-    """
 
+    # Cache fájl elérési útvonala
     _cache_file = os.path.join(os.path.dirname(__file__), "unirate_currencies.json")
 
     def __init__(self, **kwargs):
         conn_id = kwargs.pop("conn_id", "unirate_api")
+
+        # API kulcs beolvasása környezeti változóból, vagy alapértelmezett érték használata
         self.api_key = os.getenv("UNIRATE_API_KEY", "dLkIJ6VpPVY9c1HCjlNrBTXycfiJNf5lA4QLBdwlGIGRgTR3XsboZ3BW9gjEi9T4")
         base_url_fallback = kwargs.pop("base_url_fallback", "https://api.unirateapi.com/api")
         super().__init__(conn_id=conn_id, base_url_fallback=base_url_fallback, use_hook=True, **kwargs)
 
+    # A cache-elt valuta lista beolvasása a JSON fájlból
     def _get_cached_currencies(self) -> Optional[List[Dict[str, str]]]:
         if os.path.exists(self._cache_file):
             try:
@@ -32,6 +35,7 @@ class UniRateConnector(BaseConnector):
                 logger.error(f"Error reading UniRate cache: {e}")
         return None
 
+    # Az aktuális valuta lista mentése a cache-be
     def _save_currencies_to_cache(self, currencies: List[Dict[str, str]]):
         try:
             with open(self._cache_file, "w", encoding="utf-8") as f:
@@ -39,9 +43,11 @@ class UniRateConnector(BaseConnector):
         except Exception as e:
             logger.error(f"Error writing UniRate cache: {e}")
 
+    # Dinamikus szűrők generálása
     def get_filter_options(self, current_params: Dict[str, Any] = None) -> dict:
         currency_options = self._get_cached_currencies()
-        
+
+        # Fallback
         if not currency_options:
             currency_options = [
                 {"label": "USD - US Dollar", "value": "USD"},
@@ -50,6 +56,7 @@ class UniRateConnector(BaseConnector):
                 {"label": "JPY - Japanese Yen", "value": "JPY"},
                 {"label": "HUF - Hungarian Forint", "value": "HUF"}
             ]
+            # Letöltés az API-tól és mentés a cache-be
             try:
                 url = f"{self.base_url_fallback}/currencies?api_key={self.api_key}"
                 resp = requests.get(url, timeout=5)
@@ -71,6 +78,7 @@ class UniRateConnector(BaseConnector):
             except Exception as e:
                 logger.error(f"Error fetching UniRate currencies: {e}")
 
+        # A wizard felületén megjelenő bemeneti mezők definíciója
         return {
             "endpoint_type": {
                 "type": "select",
@@ -103,12 +111,14 @@ class UniRateConnector(BaseConnector):
             }
         }
 
+    # Lekérdezési query paraméterek összeállítása a kiválasztott szűrők alapján
     def build_url(self, endpoint: str, parameters: Dict[str, Any]) -> str:
         def get_clean_value(key: str, default: str = ""):
             val = parameters.get(key, default)
             if isinstance(val, dict): return val.get("value", default)
             return val
 
+        # Alapparaméterek meghatározása a kérés összeállításához
         endpoint_type = get_clean_value("endpoint_type", "rates")
         from_curr = get_clean_value("from_currency", "USD")
         
@@ -119,19 +129,22 @@ class UniRateConnector(BaseConnector):
             amount = get_clean_value("amount", "1")
             query_params.extend([f"to={to_curr}", f"amount={amount}"])
 
+        # Az URL összeállítása
         return f"{endpoint_type}?" + "&".join(query_params)
 
     def parse_response(self, response) -> List[Dict[str, Any]]:
         try:
             data = response.json() if hasattr(response, 'json') else json.loads(response)
             if isinstance(data, dict):
-                # Handle /rates response
+
+                # Árfolyamlista válasz feldolgozása
                 if "rates" in data:
                     rates = data["rates"]
                     base = data.get("base") or data.get("from")
                     date = data.get("date") or data.get("timestamp")
                     return [{"base": base, "currency": c, "rate": r, "date": date} for c, r in rates.items()]
-                # Handle /convert response
+
+                # Váltás eredmény válasz feldolgozása
                 if "result" in data:
                     return [{
                         "from": data.get("from"),

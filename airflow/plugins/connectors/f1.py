@@ -3,16 +3,14 @@ import logging
 import requests
 from connectors.base import BaseConnector
 
+""" OpenF1 API Connector """
+
 logger = logging.getLogger(__name__)
 
-
+# Specifikus API csatlakozó osztály
 class F1Connector(BaseConnector):
-    """
-    Formula 1 API connector using OpenF1 (REST API).
-    Only uses explicit meeting and session keys for stability.
-    """
 
-    # Végpontok, amik támogatják a driver_number szűrést
+    # Azon végpontok listája, amelyek támogatják a versenyző alapú szűrést
     DRIVER_SUPPORTED_ENDPOINTS = [
         "car_data", "drivers", "intervals", "laps", "location", "pit", "position", "stints"
     ]
@@ -22,6 +20,7 @@ class F1Connector(BaseConnector):
         base_url_fallback = kwargs.pop("base_url_fallback", "https://api.openf1.org/v1")
         super().__init__(conn_id=conn_id, base_url_fallback=base_url_fallback, **kwargs)
 
+    # Dinamikus szűrőbeállítások lekérése a felhasználói felület számára
     def get_filter_options(self, current_params: Dict[str, Any] = None) -> dict:
         current_params = current_params or {}
         
@@ -83,6 +82,7 @@ class F1Connector(BaseConnector):
         except Exception as e:
             logger.error(f"Failed to load F1 options: {e}")
 
+        # A wizard felületén megjelenő bemeneti mezők definíciója
         return {
             "endpoint_type": {
                 "type": "select",
@@ -122,16 +122,20 @@ class F1Connector(BaseConnector):
         }
 
     def build_url(self, endpoint: str, parameters: Dict[str, Any]) -> str:
+
+        # Segédfüggvény az értékek biztonságos kinyeréséhez
         def get_clean_value(key: str, default: str = ""):
             val = parameters.get(key, default)
             if isinstance(val, dict): return val.get("value", default)
             return val
 
+        # Alapparaméterek feloldása
         endpoint_type = get_clean_value("endpoint_type") or endpoint or "sessions"
         meeting_key = get_clean_value("meeting_key")
         session_key = get_clean_value("session_key")
         driver_number = get_clean_value("driver_number")
 
+        # Lekérdezési query paraméterek összeállítása a kiválasztott szűrők alapján
         query_params = []
         if session_key: 
             query_params.append(f"session_key={session_key}")
@@ -141,10 +145,12 @@ class F1Connector(BaseConnector):
         if driver_number and endpoint_type in self.DRIVER_SUPPORTED_ENDPOINTS: 
             query_params.append(f"driver_number={driver_number}")
 
+        # Végleges relatív útvonal előállítása
         url_path = endpoint_type
         if query_params: url_path += "?" + "&".join(query_params)
         return url_path
 
+    # API válasz feldolgozása listává
     def parse_response(self, response) -> List[Dict[str, Any]]:
         try:
             data = response.json() if hasattr(response, 'json') else response

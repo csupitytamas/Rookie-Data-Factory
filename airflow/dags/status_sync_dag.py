@@ -1,23 +1,29 @@
+
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
 from datetime import datetime, timedelta
 from sync.status_sync import update_pipeline_status
 
+""" 
+DAG felelős az állapot szinkronizálásáért. 
+Rendszeresen futva frissíti a pipeline-ok státuszát az adatbázisban az Airflow futási eredményei alapján.
+"""
+
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'email_on_failure': True,
-    'email': ['your.email@example.com'],
+    'email_on_failure': False,
+    'email_on_retry': False,
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }
 
+# A DAG definiálása
 dag = DAG(
     'status_sync_dag',
     default_args=default_args,
-    description='Pipeline status sync from Airflow to database',
     schedule_interval='*/2 * * * *',
-    start_date=datetime(2025, 6, 4),
+    start_date=datetime(2026, 1, 1),
     catchup=False,
     max_active_runs=1,
 )

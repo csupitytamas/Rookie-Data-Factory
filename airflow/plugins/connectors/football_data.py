@@ -5,8 +5,10 @@ import os
 from functools import lru_cache
 from connectors.base import BaseConnector
 
+""" Football-Data.org API Connector."""
 logger = logging.getLogger(__name__)
 
+# Cache-t HTTP GET kérés a API-hoz a felesleges hálózati forgalom elkerülése érdekében
 @lru_cache(maxsize=64)
 def _cached_football_get(url: str, headers_tuple: tuple, params_tuple: tuple):
     headers = dict(headers_tuple)
@@ -16,19 +18,19 @@ def _cached_football_get(url: str, headers_tuple: tuple, params_tuple: tuple):
     resp.raise_for_status()
     return resp.json()
 
+# Specifikus API csatlakozó osztály
 class FootballDataConnector(BaseConnector):
-    """
-    Football-Data.org API connector (v4).
-    """
-
     def __init__(self, **kwargs):
         conn_id = kwargs.pop("conn_id", "football_data_api")
-        # Read API Key from environment variable, fallback to provide by user if not found
+
+        # API kulcs beolvasása környezeti változóból, vagy alapértelmezett érték használata
         self.api_key = os.getenv("FOOTBALL_DATA_API_KEY", "eb2edc0dabd94891a5ef65d438ac8e8e")
         base_url_fallback = kwargs.pop("base_url_fallback", "https://api.football-data.org/v4")
-        # Enable hook now that we've added the connection to .env
+
+        # BaseConnector inicializálása
         super().__init__(conn_id=conn_id, base_url_fallback=base_url_fallback, use_hook=True, **kwargs)
 
+    # Szükséges HTTP fejlécek összeállítása X-Auth azonosítással
     def get_headers(self) -> Dict[str, str]:
         return {
             "X-Auth-Token": self.api_key,
@@ -41,7 +43,8 @@ class FootballDataConnector(BaseConnector):
             url = "https://api.football-data.org/v4/competitions"
             headers_tuple = tuple(sorted(self.get_headers().items()))
             data = _cached_football_get(url, headers_tuple, tuple())
-            
+
+            # A válaszból csak a 'TIER_ONE' bajnokságokat szűrjük ki, mert csak ezek érhetőek el ingyenesen :C
             competitions = data.get("competitions", [])
             for comp in competitions:
                 plan = comp.get("plan")
@@ -51,20 +54,13 @@ class FootballDataConnector(BaseConnector):
                         "label": label,
                         "value": str(comp.get("code"))
                     })
+
+            # A bajnokságok listájának név szerinti rendezése
             competition_options.sort(key=lambda x: x["label"])
         except Exception as e:
             logger.error(f"Error fetching competitions: {e}")
 
-        if not competition_options:
-            competition_options = [
-                {"label": "Premier League (PL)", "value": "PL"},
-                {"label": "Bundesliga (BL1)", "value": "BL1"},
-                {"label": "Eredivisie (ED)", "value": "ED"},
-                {"label": "Primera Division (PD)", "value": "PD"},
-                {"label": "Serie A (SA)", "value": "SA"},
-                {"label": "Ligue 1 (FL1)", "value": "FL1"}
-            ]
-
+        # A wizard felületén megjelenő bemeneti mezők definíciója
         return {
             "competition": {
                 "type": "select",
@@ -83,7 +79,7 @@ class FootballDataConnector(BaseConnector):
 
     def parse_response(self, response) -> List[Dict[str, Any]]:
         try:
-            # Handle both requests response and Airflow Hook response
+            # A requests Response objektum és a nyers JSON sztring támogatása
             if hasattr(response, 'json'):
                 data = response.json()
             else:
@@ -94,6 +90,7 @@ class FootballDataConnector(BaseConnector):
             if not matches and "message" in data:
                 raise ValueError(f"API Message: {data['message']}")
 
+            # A válasz serializálása
             records = []
             for m in matches:
                 records.append({

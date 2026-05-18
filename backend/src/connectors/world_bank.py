@@ -35,7 +35,7 @@ class WorldBankConnector(BaseConnector):
                     ]
                 }
         except Exception as e:
-            print(f"Hiba a témakörök lekérésekor: {e}")
+            print(f"Error fetching topics: {e}")
         return {"topics": []}
 
     def build_url(self, endpoint: str, parameters: Dict[str, Any]) -> str:

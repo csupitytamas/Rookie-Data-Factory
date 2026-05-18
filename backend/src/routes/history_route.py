@@ -1,8 +1,7 @@
+""" Ez a fájl a folyamatok futási előzményeinek és a hozzájuk tartozó logoknak a lekérdezését biztosító végpontokat tartalmazza. """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Optional, Any
-
-# Importáljuk az adatbázis kapcsolatot és a modelleket
+from typing import List, Any
 from src.database.connection import get_db
 from src.models.status_model import Status
 from src.models.etl_config_model import ETLConfig
@@ -16,8 +15,6 @@ def get_pipeline_history(db: Session = Depends(get_db)):
     Visszaadja a pipeline-ok aktuális állapotát (History/Status nézet).
     """
     try:
-        # JAVÍTÁS: Status.id helyett Status.etlconfig_id-t használunk
-        # JAVÍTÁS: Kivettük a Status.error_message-t, mert nincs a modellben
         results = (
             db.query(
                 Status.etlconfig_id,  

@@ -1,25 +1,33 @@
 import sqlalchemy as sa
 import pandas as pd
 import os
-from transforms.transfomations import field_mapping, group_by, order_by, flatten_grouped_data, run_secure_sql_wrapper
+from logic.transforms.transfomations import field_mapping, group_by, order_by, flatten_grouped_data, run_secure_sql_wrapper
+
+"""
+TRANSFORM TASK
+A modul felelős az adatok transzformálásáért, beleértve a mezőleképezéseket, 
+egyedi SQL futtatását és a csoportosításokat. 
+"""
 
 db_url = os.getenv("DB_URL")
 if not db_url:
     raise ValueError("Error: Database connection failed.")
 engine = sa.create_engine(db_url)
 
+# Transzformációs lépés.
 def transform_data(pipeline_id, **kwargs):
+
+    # Az extrakciós lépésből származó adatok lekérése XCom-on keresztül.
     ti = kwargs['ti']
     data = ti.xcom_pull(key='extracted_data', task_ids=f"extract_data_{pipeline_id}")
     if not data:
         data = ti.xcom_pull(task_ids=f"extract_data_{pipeline_id}")
-
     if not data:
         print(" Error: No data to extract.")
         raise Exception("Error: No data to extract.")
-
-    #Custom SQL futattása
     custom_sql = None
+
+    # Adatbázis-konfiguráció és egyedi SQL beállítások ellenőrzése.
     with engine.connect() as conn:
         query = sa.text("SELECT custom_sql, transformation FROM etlconfig WHERE id = :id")
         row = conn.execute(query, {"id": pipeline_id}).mappings().first()
@@ -29,9 +37,9 @@ def transform_data(pipeline_id, **kwargs):
             if transform_meta and transform_meta.get('type') in ['advenced', 'advanced'] and raw_sql:
                 custom_sql = raw_sql
 
+    # Az esetleges egyedi SQL végrehajtása.
     if custom_sql:
         try:
-            # CTE Wrapper alkalmazása ideiglenes táblán
             df = pd.DataFrame(data)
             staging_table = f"staging_p{pipeline_id}"
             df.to_sql(staging_table, engine, if_exists='replace', index=False)
@@ -40,7 +48,6 @@ def transform_data(pipeline_id, **kwargs):
                 actual_source_table=staging_table,
                 engine=engine
             )
-            # Ideiglenes tábla kiürítése
             with engine.begin() as conn:
                 conn.execute(sa.text(f'DROP TABLE IF EXISTS "{staging_table}"'))
 
@@ -53,6 +60,7 @@ def transform_data(pipeline_id, **kwargs):
             print(f"Error with the Custom SQL {e}")
             raise
 
+    # A táblalétrehozás során mentett metaadatok és konfigurációk lekérése az XCom-ból.
     final_columns = ti.xcom_pull(key='final_columns', task_ids=f"create_table_{pipeline_id}")
     col_rename_map = ti.xcom_pull(key='col_rename_map', task_ids=f"create_table_{pipeline_id}")
     group_by_columns = ti.xcom_pull(key='group_by_columns', task_ids=f"create_table_{pipeline_id}")
@@ -65,14 +73,12 @@ def transform_data(pipeline_id, **kwargs):
          ti.xcom_push(key='final_data', value=data)
          return
 
-    # 1. Field mapping
+    # Alapszintű transzformációk végrehajtása: mezőleképezés, rendezés és csoportosítás a segédfüggvényekkel.
     transformed = field_mapping(data, col_rename_map, final_columns, field_mappings=field_mappings)
-    # 2. Order_by
     if order_by_column:
         ordered = order_by(transformed, [order_by_column], order_direction)
     else:
         ordered = transformed
-    # 3. Group_by
     if group_by_columns:
         grouped = group_by(ordered, group_by_columns)
         flattened = flatten_grouped_data(grouped)
