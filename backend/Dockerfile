@@ -10,14 +10,14 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 4. Requirements másolása (A gyökérből indulva!)
+# 4. Requirements másolása
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 5. A backend forráskód másolása
 COPY backend/src ./src
 
-# 6. A DAG-ok beemelése az Airflow mappából (hogy a backend is lássa őket)
+# 6. A DAG-ok beemelése az Airflow mappából
 COPY airflow/dags ./src/airflow/dags/
 
 # 7. Környezeti változók (PYTHONPATH)

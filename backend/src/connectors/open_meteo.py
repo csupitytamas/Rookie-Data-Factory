@@ -3,42 +3,43 @@ import requests
 import logging
 from connectors.base import BaseConnector
 
+""" Open-Meteo API Connector. """
+
 logger = logging.getLogger(__name__)
 
-class OpenMeteoConnector(BaseConnector):
-    """
-    Open-Meteo API connector - Free weather data.
-    Documentation: https://open-meteo.com/
-    """
 
+# Specifikus API csatlakozó osztály az Open-Meteo-hoz
+class OpenMeteoConnector(BaseConnector):
     def __init__(self, **kwargs):
         conn_id = kwargs.pop("conn_id", "open_meteo_api")
         base_url_fallback = kwargs.pop("base_url_fallback", "https://api.open-meteo.com/v1")
         super().__init__(conn_id=conn_id, base_url_fallback=base_url_fallback, **kwargs)
 
+    # Dinamikus szűrők generálása, beleértve a városnév alapján történő koordináta keresést is
     def get_filter_options(self, current_params: Dict[str, Any] = None) -> dict:
-        """
-        Provides filter options including city search results if a city is provided.
-        """
         current_params = current_params or {}
         city_query = current_params.get("city_search")
-        
         city_options = []
+
+        # Csak akkor indítunk geocoding keresést, ha legalább 3 karaktert beírt a felhasználó
         if city_query and len(city_query) > 2:
             try:
-                # Geocoding API hívás a város kereséséhez
+
+                # Geocoding API hívás a város nevének feloldásához (szélesség, hosszúság)
                 geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city_query}&count=5&language=en&format=json"
                 resp = requests.get(geo_url, timeout=5)
                 if resp.status_code == 200:
                     results = resp.json().get("results", [])
                     for res in results:
                         label = f"{res.get('name')}, {res.get('country')} ({res.get('admin1', '')})"
-                        # Az értékben eltároljuk a koordinátákat JSON-szerűen
+
+                        # A koordinátákat tároljuk a későbbi feldolgozáshoz
                         value = f"{res.get('latitude')},{res.get('longitude')}"
                         city_options.append({"label": label, "value": value})
             except Exception as e:
                 logger.error(f"Geocoding error: {e}")
 
+        # A wizard felületén megjelenő bemeneti mezők definíciója
         return {
             "city_search": {
                 "type": "text",
@@ -81,32 +82,35 @@ class OpenMeteoConnector(BaseConnector):
             }
         }
 
+    # Lekérdezési query paraméterek összeállítása a kiválasztott szűrők alapján
     def build_url(self, endpoint: str, parameters: Dict[str, Any]) -> str:
+
+        # A koordináták kinyerése és ellenőrzése
         location = parameters.get("location")
         if isinstance(location, dict): location = location.get("value")
-        
+
         if not location or ',' not in str(location):
             raise ValueError("Please select a valid location from the list.")
-            
+
         lat, lon = str(location).split(',')
         vars = parameters.get("weather_vars", "temperature_2m")
         if isinstance(vars, dict): vars = vars.get("value")
-        
+
         days = parameters.get("forecast_days", "7")
         if isinstance(days, dict): days = days.get("value")
-        
-        # Build the final Open-Meteo URL
+
+        # A URL összeállítása
         return f"forecast?latitude={lat}&longitude={lon}&hourly={vars}&forecast_days={days}"
 
     def parse_response(self, response) -> List[Dict[str, Any]]:
         data = response.json()
         if "hourly" not in data:
             return []
-            
+
         hourly = data["hourly"]
         times = hourly.get("time", [])
-        
-        # Átfordítjuk oszlop-folyamból sor-folyamra (ETL kompatibilis)
+
+        # A válasz szerializálása
         records = []
         for i, t in enumerate(times):
             record = {"time": t, "latitude": data.get("latitude"), "longitude": data.get("longitude")}
@@ -114,7 +118,7 @@ class OpenMeteoConnector(BaseConnector):
                 if key != "time":
                     record[key] = hourly[key][i]
             records.append(record)
-            
+
         return records
 
     def fetch(self, endpoint: str, parameters: Dict[str, Any], **kwargs) -> List[Dict[str, Any]]:

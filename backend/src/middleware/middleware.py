@@ -1,5 +1,7 @@
 from fastapi.middleware.cors import CORSMiddleware
 
+""" CORS (Cross-Origin Resource Sharing) middleware, amely lehetővé teszi a biztonságos kommunikációt a frontend backend között. """
+
 origins = [
     "http://localhost:5173",  # Vue dev server (default)
     "http://localhost:5174",  # Vue dev server (port conflict alternative)

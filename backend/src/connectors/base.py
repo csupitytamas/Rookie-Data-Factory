@@ -3,25 +3,37 @@ from typing import List, Dict, Any, Optional
 import logging
 import requests
 
+"""
+A modul tartalmazza az BaseConnector absztrakt osztályt.
+Minden specifikus API connectornak ebből kell örökölnie,
+biztosítva az egységes felületet a kérések küldéséhez és az adatok normalizálásához.
+"""
+
+# Airflow HttpHook importálása, ha elérhető
 try:
     from airflow.providers.http.hooks.http import HttpHook
+
     AIRFLOW_AVAILABLE = True
 except ImportError:
     AIRFLOW_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
+
+# Absztrakt alaposztály az API connectorokhoz
 class BaseConnector(ABC):
     def __init__(
-        self,
-        conn_id: str,
-        base_url_fallback: str = None,
-        **kwargs
+            self,
+            conn_id: str,
+            base_url_fallback: str = None,
+            use_hook: bool = True,
+            **kwargs
     ):
         self.conn_id = conn_id
         self.base_url_fallback = base_url_fallback
-        
-        if AIRFLOW_AVAILABLE:
+        self.use_hook = use_hook
+
+        if AIRFLOW_AVAILABLE and use_hook:
             self.hook = HttpHook(http_conn_id=conn_id, method='GET')
         else:
             self.hook = None
@@ -31,29 +43,38 @@ class BaseConnector(ABC):
                 "Accept": "application/json"
             })
 
+    # A HTTP kérés végrehajtása
     def make_request(
-        self,
-        endpoint: str,
-        method: str = "GET",
-        params: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
-        **kwargs
+            self,
+            endpoint: str,
+            method: str = "GET",
+            params: Optional[Dict[str, Any]] = None,
+            headers: Optional[Dict[str, str]] = None,
+            **kwargs
     ):
-        # 1. AIRFLOW MÓD (ETL futás)
+        # 1. AIRFLOW HOOK KÉRÉS
         if self.hook:
-            logger.info(f"[{self.conn_id}] Airflow Hook kérés: /{endpoint}")
-            return self.hook.run(endpoint=endpoint, data=params, headers=headers, extra_options=kwargs)
-            
-        # 2. FASTAPI BACKEND MÓD (UI szűrők lekérése)
-        else:
+            try:
+                logger.info(f"[{self.conn_id}] Airflow Hook: /{endpoint}")
+                return self.hook.run(endpoint=endpoint, data=params, headers=headers, extra_options=kwargs)
+            except Exception as e:
+                if "isn't defined" in str(e) or "AirflowNotFoundException" in str(e):
+                    logger.warning(f"Connection {self.conn_id} not found in Airflow, falling back to direct requests.")
+                    self.hook = None  # Fallback to requests mode
+                    self.session = requests.Session()
+                else:
+                    raise e
+
+        # 2. FALLBACK a backendre
+        if not self.hook:
             url = f"{self.base_url_fallback}/{endpoint}" if self.base_url_fallback else endpoint
-            logger.info(f"[{self.conn_id}] FastAPI Fallback kérés: {url}")
-            
-            request_headers = self.session.headers.copy()
+            logger.info(f"[{self.conn_id}] Direct Request (Fallback): {url}")
+
+            request_headers = getattr(self, 'session', requests.Session()).headers.copy()
             if headers:
                 request_headers.update(headers)
-                
-            response = self.session.request(
+
+            response = requests.request(
                 method=method,
                 url=url,
                 params=params,
@@ -64,6 +85,7 @@ class BaseConnector(ABC):
             response.raise_for_status()
             return response
 
+    # Absztrakt metódusok, amelyeket a leszármazott osztályoknak kell implementálniuk
     @abstractmethod
     def get_filter_options(self, current_params: Dict[str, Any] = None) -> dict:
         return {}
@@ -72,6 +94,7 @@ class BaseConnector(ABC):
     def build_url(self, endpoint: str, parameters: Dict[str, Any]) -> str:
         pass
 
+    # Válasz feldolgozása egyedi logika alapján
     @abstractmethod
     def parse_response(self, response) -> List[Dict[str, Any]]:
         pass
@@ -80,7 +103,9 @@ class BaseConnector(ABC):
     def fetch(self, endpoint: str, parameters: Dict[str, Any], **kwargs) -> List[Dict[str, Any]]:
         pass
 
-    def normalize_data(self, raw_data: List[Dict[str, Any]], field_mappings: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
+    # Nyers adat normalizálása és mezők leképezése a field_mappings alapján
+    def normalize_data(self, raw_data: List[Dict[str, Any]], field_mappings: Optional[List[Dict[str, str]]] = None) -> \
+    List[Dict[str, Any]]:
         if not field_mappings: return raw_data
         normalized = []
         for item in raw_data:
@@ -92,15 +117,19 @@ class BaseConnector(ABC):
             normalized.append(record)
         return normalized
 
+    # Segédmetódus a beágyazott mezők kinyeréséhez (key in keys)
     def _extract_from_path(self, data: Dict[str, Any], path: str) -> Any:
         keys = path.split(".")
         value = data
         for key in keys:
-            if isinstance(value, dict): value = value.get(key)
-            else: return None
+            if isinstance(value, dict):
+                value = value.get(key)
+            else:
+                return None
             if value is None: return None
         return value
 
+    # Kontextuskezelő metódusok az erőforrás-felszabadításhoz
     def __enter__(self):
         return self
 

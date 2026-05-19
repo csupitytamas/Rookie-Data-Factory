@@ -7,7 +7,12 @@ from connectors.open_meteo import OpenMeteoConnector
 from connectors.football_data import FootballDataConnector
 from connectors.unirate import UniRateConnector
 
-# Connector registry - itt regisztráljuk az összes elérhető connector-t
+""" 
+Ez a modul regisztrálja az összes elérhető API csatlakozót. 
+Lehetővé teszi a csatlakozók típus szerinti lekérését és dinamikus példányosítását a rendszerben.
+"""
+
+# Connector típusok regisztálása
 connector_registry: Dict[str, Type[BaseConnector]] = {
     "worldbank": WorldBankConnector,
     "world_bank": WorldBankConnector,
@@ -21,38 +26,19 @@ connector_registry: Dict[str, Type[BaseConnector]] = {
 }
 
 
+# Egy példány létrehozása a megadott típusú csatlakozóból a megadott paraméterekkel
 def get_connector(connector_type: str, **kwargs) -> BaseConnector:
-    """
-    Connector példány létrehozása típus alapján.
-    
-    Args:
-        connector_type: A connector típusa (pl. "worldbank", "undata", stb.)
-        **kwargs: Connector-specifikus inicializálási paraméterek
-        
-    Returns:
-        BaseConnector példány
-        
-    Raises:
-        ValueError: Ha a connector_type nem ismert
-    """
     connector_class = connector_registry.get(connector_type.lower())
-    
     if not connector_class:
         available = ", ".join(connector_registry.keys())
         raise ValueError(
             f"Unknown connector type: '{connector_type}'. "
             f"Available connectors: {available}"
         )
-    
+
     return connector_class(**kwargs)
 
 
+# Az új connector felvétele
 def register_connector(name: str, connector_class: Type[BaseConnector]):
-    """
-    Új connector regisztrálása runtime-ban.
-    
-    Args:
-        name: A connector neve
-        connector_class: A connector osztály
-    """
     connector_registry[name.lower()] = connector_class

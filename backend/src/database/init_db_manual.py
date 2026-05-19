@@ -1,26 +1,21 @@
 import sys
 import os
-
-# Hozzáadjuk a parent directory-t az útvonalhoz (három szintet lépünk vissza a src/database-ből)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(BASE_DIR)
-
-# --- FONTOS JAVÍTÁS: Importáljuk a SessionLocal-t is az íráshoz ---
 from src.database.connection import engine, Base, SessionLocal
-
-# Modellek importálása
 from src.models.etl_config_model import ETLConfig
 from src.models.api_schemas_model import APISchema
 from src.models.status_model import Status
 from src.models.settings_model import Settings
 
+""" Ez a szkript felelős az adatbázis táblák létrehozásáért (init_db) telepítés során és az alapértelmezett API sémák feltöltéséért (seed_api_schemas). """
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(BASE_DIR)
+
+# Feltölti az adatbázist az implementált API sémákkal.
 def seed_api_schemas():
-    """Alapértelmezett API sémák betöltése a jelenlegi modellezés alapján."""
     db = SessionLocal()
     added_count = 0
     try:
-        # Itt definiáljuk az összes API-t (a meglévőket és az újat is)
         default_schemas = [
             APISchema(
                 source="WHO",
@@ -40,17 +35,16 @@ def seed_api_schemas():
                     }
                 }
             ),
-            # --- AZ ÚJ FORMA-1 API ---
             APISchema(
-                source="f1_api",  # Fontos: egyeznie kell a registry.py-ban lévő névvel!
+                source="f1_api",
                 field_mappings=[],
                 alias="Formula-1 Data API",
-                description="F1 hivatalos verseny, köridő és telemetriai adatok",
+                description="Official F1 race, lap time and telemetry data",
                 connector_type="f1_api",
                 endpoint="sessions",
                 base_url="https://api.openf1.org/v1",
                 response_format="json",
-                config_schema={}  # Ezt üresen is hagyhatod, a connector .get_filter_options() adja a frontendnek
+                config_schema={}
             ),
             APISchema(
                 source="open_meteo",
@@ -87,18 +81,14 @@ def seed_api_schemas():
             )
         ]
 
-        # Végigmegyünk a listán, és csak azt adjuk hozzá, ami még nincs a táblában
-        # VAGY frissítjük, ha már létezik
+        # Meghatározzuk az aktuális sémákat, és eltávolítjuk azokat, amelyek már nincsenek a listában.
         current_sources = [s.source for s in default_schemas]
-        
-        # 1. TÖRLÉS: Ami az adatbázisban benne van, de a listánkban nincs, azt töröljük
         db.query(APISchema).filter(APISchema.source.notin_(current_sources)).delete(synchronize_session=False)
 
-        # 2. FELVITEL / FRISSÍTÉS:
+        # Végigmegyünk az alapértelmezett sémákon: frissítjük a meglévőket vagy hozzáadjuk az újakat.
         for schema in default_schemas:
             existing = db.query(APISchema).filter(APISchema.source == schema.source).first()
             if existing:
-                # Frissítjük a meglévőt (pl. ha változott az alias vagy a connector_type)
                 existing.alias = schema.alias
                 existing.description = schema.description
                 existing.connector_type = schema.connector_type
@@ -107,29 +97,23 @@ def seed_api_schemas():
             else:
                 db.add(schema)
                 added_count += 1
-
         db.commit()
-        print(f"Siker! Az API sémák szinkronizálva. (Új: {added_count}, Összes: {len(current_sources)})")
-
+        print(f"Success! API schemas synchronized. (New: {added_count}, Total: {len(current_sources)})")
     except Exception as e:
-        print(f"Hiba a kezdőadatok betöltésekor: {e}")
+        print(f"Error loading initial data: {e}")
         db.rollback()
     finally:
         db.close()
 
-
+# Inicializálja az adatbázist: létrehozza a táblákat és meghívja a seed funkciót.
 def init_db():
-    print("Adatbázis táblák létrehozása...")
+    print("Creating database tables...")
     try:
-        # Létrehozza a táblákat
         Base.metadata.create_all(bind=engine)
-        print("Siker! A statikus táblák (users, user_sessions, etlconfig, api_schemas, status) létrejöttek.")
-
-        # --- FONTOS JAVÍTÁS: Itt HÍVJUK MEG a feltöltő függvényt ---
+        print("Success! Static tables (users, user_sessions, etlconfig, api_schemas, status) created.")
         seed_api_schemas()
-
     except Exception as e:
-        print(f"Hiba történt: {e}")
+        print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     init_db()

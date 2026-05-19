@@ -1,5 +1,8 @@
 import sqlalchemy as sa
 
+""" Load lépés segédfüggvényei """
+
+# Új adatok hozzáadása a táblához
 def load_append(table_name, data, conn):
     if not data:
         return
@@ -9,28 +12,26 @@ def load_append(table_name, data, conn):
         sql = sa.text(f'INSERT INTO "{table_name}" ({keys}) VALUES ({params})')
         conn.execute(sql, row)
 
+# Adatok frissítése vagy beszúrása ütközés esetén (UPSERT)
 def load_upsert(table_name, data, conn, unique_cols):
     if not data:
         print("[WARNING] No data to upsert.")
         return
 
-    # Szedjük ki az összes oszlopot az első sorból
+    # Az oszlopnevek kinyerése az adatokból
     columns = list(data[0].keys())
-    
-    # Felkészítjük a SET részt (azokat az oszlopokat, amiket frissíteni kell ütközés esetén)
-    # Kizárjuk az 'id'-t (ami autoincrement) és az egyedi oszlopokat
+
+    # A frissítendő oszlopok meghatározása (kivéve az egyedi kulcsokat és az id-t)
     update_cols = [col for col in columns if col not in unique_cols and col != 'id']
     update_stmt_parts = [f'"{col}"=EXCLUDED."{col}"' for col in update_cols]
     update_stmt = ", ".join(update_stmt_parts)
-    
-    # Felkészítjük a mezőket és a paramétereket az INSERT részhez
+
+    # Az SQL kérés mezőinek és paramétereinek előkészítése
     keys_str = ", ".join([f'"{col}"' for col in columns])
     params_str = ", ".join([f':{col}' for col in columns])
-    
-    # Az első egyedi oszlopot használjuk az ütközés vizsgálathoz
     unique_col_formatted = f'"{unique_cols[0]}"'
-    
-    # Összerakjuk a végleges SQL-t
+
+    # SQL lekérdezés összeállítása:
     if update_stmt:
         sql_query = sa.text(f"""
             INSERT INTO "{table_name}" ({keys_str})
@@ -38,19 +39,19 @@ def load_upsert(table_name, data, conn, unique_cols):
             ON CONFLICT ({unique_col_formatted}) DO UPDATE 
             SET {update_stmt};
         """)
+
+    # Ha nincs frissítendő oszlop, csak hagyja figyelmen kívül az esetleges conflictot
     else:
-        # Ha nincs mit frissíteni (pl. csak egyedi oszlopunk van), akkor csak kihagyjuk az ütközést
         sql_query = sa.text(f"""
             INSERT INTO "{table_name}" ({keys_str})
             VALUES ({params_str})
             ON CONFLICT ({unique_col_formatted}) DO NOTHING;
         """)
 
-    # Soronként hajtjuk végre a biztonságos paraméter átadás érdekében
     for row in data:
         conn.execute(sql_query, row)
 
+# A tábla tartalmának teljes felülírása
 def load_overwrite(table_name, data, conn):
-    # Truncate után az append már biztonságosan használja az idézőjeleket
     conn.execute(sa.text(f'TRUNCATE TABLE "{table_name}";'))
     load_append(table_name, data, conn)
