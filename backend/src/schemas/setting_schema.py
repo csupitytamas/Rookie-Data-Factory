@@ -1,15 +1,12 @@
 from pydantic import BaseModel
 from typing import Optional
 
-class SettingsBase(BaseModel):
-    timezone: str
+""" Ez a modul a rendszerbeállítások  adatstruktúráját definiáló sémát tartalmazza. """
+
+# A rendszerbeállításokat reprezentáló modell.
+class SettingsSchema(BaseModel):
+    timezone: str = "Europe/Budapest"
     download_path: Optional[str] = None
 
-class SettingsUpdate(SettingsBase):
-    pass
-
-class SettingsResponse(SettingsBase):
-    id: int
-
     class Config:
-        orm_mode = True
+        from_attributes = True
