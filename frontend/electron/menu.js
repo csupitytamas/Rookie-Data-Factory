@@ -1,5 +1,9 @@
+/**
+Ez a fájl az alkalmazás felső menüsorát definiálja és kezeli a navigációs eseményeket.
+*/
 const { Menu, ipcMain } = require("electron");
 
+// Létrehozza az alkalmazás egyedi menüsorát, és beállítja a navigációs útvonalakat a frontend számára.
 function createMenu(mainWindow) {
     const template = [
         {
@@ -36,14 +40,6 @@ function createMenu(mainWindow) {
                             mainWindow.webContents.send("navigate", "/active-pipelines");
                         }
                     }
-                },
-                {
-                    label: "Help",
-                    click: () => {
-                        if (mainWindow) {
-                            mainWindow.webContents.send("navigate", "/help");
-                        }
-                    }
                 }
             ]
         },
@@ -58,8 +54,10 @@ function createMenu(mainWindow) {
     
     ];
 
+    // Felépíti a menüt a sablon alapján, és globálisan beállítja az alkalmazáshoz.
     const menu = Menu.buildFromTemplate(template);
     Menu.setApplicationMenu(menu);
 }
 
+// Exportálja a menükészítő függvényt az Electron fő folyamata számára.
 module.exports = { createMenu };

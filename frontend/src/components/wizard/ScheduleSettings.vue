@@ -1,3 +1,4 @@
+<!-- Ez a fájl az időzítési és kiegészítő adat beállításokat kezelő wizard lépés. -->
 <template>
   <div class="form-layout">
     <h3>Schedule & Conditions</h3>
@@ -100,30 +101,33 @@ const store = usePipelineStore();
 const isUploading = ref(false);
 const uploadError = ref('');
 const loadingColumns = ref(false);
-
 const availablePipelines = ref<any[]>([]);
 
-// DEBUG: Figyeljük, mikor változik meg az ütemezés
+// Figyeljük az ütemezés típusának változását a store-ban.
 watch(() => store.config.schedule, (newVal) => {
   console.log("SCHEDULE CHANGED IN STORE TO:", newVal);
 });
 
+// Komponens csatolásakor lekérjük az összes elérhető pipeline-t a függőségek beállításához.
 onMounted(async () => {
+
+  // Lekérjük a meglévő pipeline-ok listáját a legördülő menühöz, a jelenlegit (szerkesztés esetén) kihagyva.
   try {
     const response = await getAllPipelines();
     const allPipelines = response.data || [];
-    
     availablePipelines.value = allPipelines.filter((p: any) => {
       return p.id !== store.config.id;
     });
-    
   } catch (error) {
     console.error("Failed to load pipelines for dropdown:", error);
   }
 });
 
+// Figyeljük a választott függőségi pipeline változását.
 watch(
   () => store.config.dependency_pipeline_id,
+
+  // Ha változik a függőség, frissítjük a kapcsolódó oszloplistát a paraméterek között.
   async (newId) => {
     if (!newId) {
       if (store.config.parameters) {
@@ -133,20 +137,15 @@ watch(
     }
 
     loadingColumns.value = true;
+
+    // Lekérdezzük a függő pipeline céltáblájának oszlopait a sémához.
     try {
-      console.log(`Pipeline selected (${newId}). Fetching columns...`);
-
-      store.config.column_order = []; 
-
+      store.config.column_order = [];
       const response = await getPipelineColumns(newId);
-      
       store.config.parameters = {
         ...store.config.parameters,
         dependency_columns: response.data || [] 
       };
-      
-      console.log("Dependency columns saved:", response.data);
-      
     } catch (error) {
       console.error("Failed to fetch dependency columns:", error);
       store.config.parameters.dependency_columns = [];
@@ -156,35 +155,34 @@ watch(
   }
 );
 
+// Számított tulajdonság a feltöltött fájlban talált oszlopok számának megjelenítéséhez.
 const columnCount = computed(() => {
   return store.config.parameters.extra_file_columns?.length || 0;
 });
 
+// Fájlfeltöltés kezelése: a fájlt elküldjük a backendnek és mentjük a kapott metaadatokat.
 const handleFileUpload = async (event: any) => {
   const file = event.target.files?.[0];
   if (!file) return;
-
   isUploading.value = true;
   uploadError.value = '';
-  
   store.config.uploaded_file_name = file.name;
-
   const formData = new FormData();
   formData.append('file', file);
 
+  // A kiegészítő fájl feltöltése és az oszlopok analízise a backend segítségével.
   try {
     const response = await uploadExtraFile(formData);
-
     if (response.data.error) {
       throw new Error(response.data.error);
     }
 
+    // Sikeres feltöltés után elmentjük a fájl elérési útját és az oszlopneveket a store-ba.
     store.config.parameters = {
       ...store.config.parameters,
       extra_file_path: response.data.file_path,
       extra_file_columns: response.data.columns
     };
-
   } catch (err: any) {
     console.error(err);
     uploadError.value = "Upload failed: " + (err.response?.data?.detail || err.message);

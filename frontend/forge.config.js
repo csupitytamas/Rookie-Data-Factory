@@ -1,21 +1,35 @@
+/**
+Ez a fájl az Electron Forge konfigurációját tartalmazza, amely az alkalmazás csomagolásáért és a 
+telepítőfájlok  létrehozásáért felelős. Meghatározza a beépítendő erőforrásokat
+(pl. Docker konfigurációk, környezeti változók), a célplatformokat és a biztonsági beállításokat.
+*/
+
 const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 
 module.exports = {
   packagerConfig: {
     asar: true,
-    // CSAK a futtatáshoz elengedhetetlen fájlokat hagyjuk meg
+    icon: './electron/factory',
     extraResource: [
       "../docker-compose.yml",
       "../.env",
-      "./electron/loading.html"
+      "../airflow",
+      "../output",
+      "./electron/loading.html",
+      "./electron/factory.png"
     ],
   },
   rebuildConfig: {},
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: {},
+      config: {
+        name: "RookieDataFactory",
+        setupIcon: './electron/factory.ico',
+        setupExe: "Rookie Data Factory Setup.exe",
+        description: "Rookie Data Factory ETL Tool"
+      },
     },
     {
       name: '@electron-forge/maker-zip',

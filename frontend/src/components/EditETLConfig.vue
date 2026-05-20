@@ -1,3 +1,4 @@
+<!-- A fájl a meglévő pipeline-ok szerkesztésére szolgáló felület. -->
 <template>
   <div class="config-container wizard-container">
     <button class="close-btn" @click="closeEditor" title="Exit and clear data">×</button>
@@ -64,12 +65,10 @@ import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePipelineStore } from '@/stores/pipelineStore';
 import { loadPipelineData, updatePipeline } from '@/api/pipeline';
-
 import ScheduleSettings from './wizard/ScheduleSettings.vue';
 import FieldMapping from './wizard/FieldMapping.vue';
 import TransformSettings from './wizard/TransformSettings.vue';
 import SaveOptions from './wizard/SaveOptions.vue';
-
 export default defineComponent({
   name: 'EditorETLConfig',
   components: {
@@ -78,6 +77,8 @@ export default defineComponent({
     TransformSettings,
     SaveOptions
   },
+
+  // A Composition API setup függvénye az állapotkezelés és a navigációs logika koordinálásához.
   setup() {
     const store = usePipelineStore();
     const route = useRoute();
@@ -85,16 +86,18 @@ export default defineComponent({
     const pipelineId = route.query.id;
     const currentStep = ref(1);
 
+    // Az állapotkezelő tisztítása a szerkesztő elhagyásakor.
     onUnmounted(() => {
       console.log("Editor Unmounted: resetting store.");
       store.reset();
     });
 
+    // A szerkesztési folyamat lépéseinek és a hozzájuk tartozó komponenseknek a meghatározása.
     const steps = ['Schedule', 'Mapping', 'Query', 'Output'];
-
     const componentList = ['ScheduleSettings', 'FieldMapping', 'TransformSettings', 'SaveOptions'];
+
+    // Számított tulajdonságok és navigációs metódusok a lépések közötti váltáshoz.
     const currentStepComponent = computed(() => componentList[currentStep.value - 1]);
-    
     const nextStep = () => { if (currentStep.value < steps.length) currentStep.value++; };
     const prevStep = () => { if (currentStep.value > 1) currentStep.value--; };
     const closeEditor = () => {
@@ -104,15 +107,18 @@ export default defineComponent({
       }
     };
 
+    // A komponens betöltésekor lekérjük a pipeline meglévő adatait az azonosító alapján.
     onMounted(async () => {
       if (!pipelineId) return;
       const pid = parseInt(pipelineId);
       if (store.config.id === pid) return;
 
+      // API hívás a pipeline aktuális konfigurációjának betöltéséhez.
       try {
         const response = await loadPipelineData(pid);
         const pipeline = response.data;
-        
+
+        // A betöltött adatok szinkronizálása a globális Pinia store-ral a $patch metóduson keresztül.
         store.$patch({
           pipeline_name: pipeline.pipeline_name, 
           source: pipeline.source,               
@@ -142,7 +148,10 @@ export default defineComponent({
       }
     });
 
+    // A módosított konfiguráció mentése a backend felé.
     const submitChanges = async () => {
+
+      // Frissítési kérés elküldése és visszatérés a dashboardra sikeres mentés után.
       try {
         await updatePipeline(pipelineId, store.config);
         alert('Pipeline updated successfully!');
@@ -153,7 +162,6 @@ export default defineComponent({
         alert('Failed to update pipeline!');
       }
     };
-
     return { 
       currentStep, 
       steps, 

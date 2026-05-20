@@ -1,3 +1,4 @@
+<!-- A fájl az új pipeline létrehozására szolgáló wizard fő komponense. -->
 <template>
   <div class="config-container wizard-container">
     <button class="close-btn" @click="closeWizard" title="Exit">×</button>
@@ -65,7 +66,6 @@ import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { createPipeline } from '@/api/pipeline';
 import { usePipelineStore } from '@/stores/pipelineStore';
-
 import BasicSettings from './wizard/BasicSettings.vue';
 import ApiSettings from './wizard/ApiSettings.vue';
 import ScheduleSettings from './wizard/ScheduleSettings.vue';
@@ -75,6 +75,8 @@ import SaveOptions from './wizard/SaveOptions.vue';
 
 export default defineComponent({
   name: 'CreateETLPipeline',
+
+  // A wizard egyes lépéseit reprezentáló alkomponensek regisztrálása.
   components: {
     BasicSettings,
     ApiSettings,
@@ -83,21 +85,24 @@ export default defineComponent({
     TransformSettings,
     SaveOptions
   },
+
+  // A Composition API setup függvénye a reaktív állapot és a navigációs logika kezeléséhez.
   setup() {
     const store = usePipelineStore();
     const router = useRouter();
     const currentStep = ref(1);
 
+    // Az store alaphelyzetbe állítása a wizard megnyitásakor.
     onMounted(() => {
-      console.log("Create Wizard Mounted: Clearing store data.");
       store.reset();
     });
 
+    // Az állapotkezelő tisztítása az oldal elhagyásakor a memóriaszivárgás megelőzése érdekében.
     onUnmounted(() => {
-      console.log("Create Wizard Unmounted: Clearing store data.");
       store.reset();
     });
 
+    // A wizard lépéseinek nevei és a hozzájuk tartozó komponensek listája.
     const steps = ['Basic', 'Source', 'Schedule', 'Mapping', 'Query', 'Output'];
     const componentList = [
       'BasicSettings',
@@ -108,14 +113,17 @@ export default defineComponent({
       'SaveOptions'
     ];
 
+    // Számított tulajdonság, amely meghatározza az aktuálisan megjelenítendő lépés komponensét.
     const currentStepComponent = computed(() => componentList[currentStep.value - 1]);
 
+    // Navigáció a következő lépésre.
     const nextStep = () => {
       if (currentStep.value < steps.length) {
         currentStep.value++;
       }
     };
 
+    // Visszalépés az előző lépésre, miközben az aktuális lépés adatait töröljük a store-ból.
     const handleBack = () => {
       if (currentStep.value > 1) {
         store.clearStepData(currentStep.value);
@@ -123,6 +131,7 @@ export default defineComponent({
       }
     };
 
+    // A wizard bezárása megerősítés után és visszatérés a dashboardra.
     const closeWizard = () => {
       if (confirm("Do you want to exit?")) {
         store.reset(); 
@@ -130,16 +139,18 @@ export default defineComponent({
       }
     };
 
+    // A teljes pipeline konfiguráció elküldése a backendnek mentésre.
     const submitPipeline = async () => {
+
+      // Összeállítjuk a kérés törzsét a store-ban tárolt adatok alapján.
       try {
         const payload = {
           pipeline_name: store.pipeline_name,
           source: store.source,
           ...store.config
         };
-        
-        console.log("Final payload:", payload);
-        
+
+        // Meghívjuk az API-t a pipeline létrehozásához.
         await createPipeline(payload);
         alert('Successfully created!');
         store.reset(); 
@@ -150,6 +161,7 @@ export default defineComponent({
       }
     };
 
+    // Exportáljuk a template számára elérhető változókat és függvényeket.
     return {
       currentStep,
       steps,

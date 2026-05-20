@@ -1,3 +1,4 @@
+<!-- A fájl a rendszerbeállítások kezeléséért felelős komponens. -->
 <template>
   <div class="settings-container">
     <h2>System settings</h2>
@@ -43,10 +44,12 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
-
 const API_URL = 'http://localhost:8000/etl/settings'; 
 
+// A rendszer által támogatott időzónák listáját tároló reaktív változó.
 const timezones = ref([]);
+
+// Megpróbáljuk lekérni az összes érvényes időzónát a böngészőből/rendszerből; hiba esetén alapértelmezett értékeket használunk.
 try {
   timezones.value = Intl.supportedValuesOf('timeZone');
 } catch (e) {
@@ -59,7 +62,10 @@ const saving = ref(false);
 const message = ref("");
 const success = ref(false);
 
+// A komponens betöltésekor inicializáljuk az aktuális beállításokat a backendről.
 onMounted(async () => {
+
+  // Aktuális időzóna és mentési útvonal lekérése az API-n keresztül.
   try {
     const response = await axios.get(API_URL);
     if (response.data) {
@@ -73,6 +79,8 @@ onMounted(async () => {
   }
 });
 
+
+// Mappaválasztó párbeszédablak megnyitása az Electron segítségével a letöltési útvonal beállításához.
 const selectFolder = async () => {
   if (window.electron?.selectFolder) {
     const path = await window.electron.selectFolder();
@@ -80,10 +88,16 @@ const selectFolder = async () => {
   }
 };
 
+
+// A módosított beállítások mentése a backend adatbázisába és a helyi mappaszerkezet inicializálása.
 const saveSettings = async () => {
   saving.value = true;
+
+  // Beállítások frissítése a backend felé küldött PUT kéréssel.
   try {
     await axios.put(API_URL, settings.value);
+
+    // Sikeres mentés után létrehozzuk a szükséges alkönyvtárakat (Results, Logs) a választott útvonalon.
     if (window.electron?.createDirectories && settings.value.download_path) {
       await window.electron.createDirectories(settings.value.download_path);
     }

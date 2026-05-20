@@ -1,3 +1,4 @@
+<!-- A fájl a Vue alkalmazás gyökérkomponense, amely a router-view befoglalásáért felelős. -->
 <template>
   <div id="app">
     <router-view />
@@ -5,6 +6,7 @@
 </template>
 
 <script setup lang="ts">
+// A beállítások ellenőrzése mostantól a router/index.ts-ben történik (global navigation guard)
 </script>
 
 <style scoped>

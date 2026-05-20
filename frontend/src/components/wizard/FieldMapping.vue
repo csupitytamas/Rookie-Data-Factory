@@ -1,3 +1,4 @@
+<!-- A fájl az oszlopok átnevezését, törlését és sorrendjének beállítását végző wizard lépés (field mapping). -->
 <template>
   <div class="form-layout">
     <h3>Field Mapping</h3>
@@ -71,11 +72,13 @@ import draggable from 'vuedraggable';
 import { usePipelineStore } from '@/stores/pipelineStore';
 import { loadSchemaBySource, getPipelineColumns } from '@/api/pipeline';
 
+// Globális állapotkezelő és lokális reaktív változók inicializálása.
 const store = usePipelineStore();
 const loading = ref(false);
 const schemaError = ref('');
 const settingsOpen = ref<Record<string, boolean>>({});
 
+// A függvény Lekéri vagy inicializálja egy adott oszlophoz tartozó mapping beállításokat.
 const getMapping = (col: string) => {
   if (!store.config.field_mappings[col]) {
     store.config.field_mappings[col] = { rename: false, newName: "", unique: false, delete: false, hidden: false, concat: { enabled: false } };
@@ -83,22 +86,30 @@ const getMapping = (col: string) => {
   return store.config.field_mappings[col];
 };
 
+// A függvény ki-be kapcsolja az adott oszlophoz tartozó részletes beállítások paneljét.
 const toggleSettings = (col: string) => {
   settingsOpen.value[col] = !settingsOpen.value[col];
 };
 
+// A függvény összeállítja a pipeline sémáját: lekérdezi az API, a feltöltött fájl és a függőségek oszlopait.
 const fetchSchema = async () => {
   loading.value = true;
   schemaError.value = '';
   try {
       let apiCols: string[] = [];
+
+      // Ha az adatforrás egy külső API, lekérdezzük a sémáját a megadott paraméterekkel.
       if (store.source && store.source !== 'Pipeline') {
+
+        // A kérés összeállítása a választott forrás és a beállított paraméterek alapján.
         try {
           const payload = {
             source: store.source,
             parameters: store.config.parameters || {}
           };
           console.log("Fetching schema with parameters:", payload.parameters);
+
+          // A dinamikus vagy statikus séma betöltése a backend segítségével.
           const resp = await loadSchemaBySource(payload);
           apiCols = (resp.data.field_mappings || []).map((f: any) => f.name);
         } catch (e: any) {
@@ -110,12 +121,19 @@ const fetchSchema = async () => {
         }
       }
 
+      // A korábban feltöltött kiegészítő fájl oszlopainak hozzáadása.
       const fileCols = store.config.parameters?.extra_file_columns || [];
       let depCols: string[] = [];
+
+      // Ha vannak manuálisan megadott függőségi oszlopok figyelembe vétele.
       if (store.config.parameters?.dependency_columns) {
          depCols = store.config.parameters.dependency_columns;
       }
+
+      // Ha van függőségi pipeline megadva, de az oszlopok nincsenek manuálisan rögzítve, lekérjük a céltáblája sémáját.
       if (depCols.length === 0 && store.config.dependency_pipeline_id) {
+
+         // A függő pipeline céltáblájának oszlopait az SQLAlchemy inspector segítségével kérjük le a backend-től.
          try {
              console.log(`Fetching columns for dependency pipeline: ${store.config.dependency_pipeline_id}`);
              const res = await getPipelineColumns(store.config.dependency_pipeline_id);
@@ -129,10 +147,15 @@ const fetchSchema = async () => {
          }
       }
 
-      console.log(`API Cols: ${apiCols.length}, File Cols: ${fileCols.length}, Dep Cols: ${depCols.length}`);
-      const allCols = [...new Set([...apiCols, ...fileCols, ...depCols])];
-      store.config.column_order = [...allCols];
-      const mappings: any = store.config.field_mappings || {};
+      // Az összes forrásból származó egyedi oszlopnév összefésülése.
+      const allCols = [...new Set([...apiCols, ...fileCols, ...depCols])].filter(c => c.toLowerCase() !== 'id');
+      
+      // Meglévő sorrend megőrzése és az új oszlopok hozzáadása a lista végéhez.
+      const existingCols = store.config.column_order || [];
+      const newCols = allCols.filter(c => !existingCols.includes(c));
+      store.config.column_order = [...existingCols, ...newCols];
+
+      const mappings: any = { ...(store.config.field_mappings || {}) };
       allCols.forEach((c: string) => {
         if (!mappings[c]) {
           mappings[c] = {
@@ -145,7 +168,6 @@ const fetchSchema = async () => {
         }
       });
       store.config.field_mappings = mappings;
-
   } catch (e) {
     console.error("Schema load error:", e);
     schemaError.value = 'Unexpected error occurred while loading fields.';
@@ -154,12 +176,9 @@ const fetchSchema = async () => {
   }
 };
 
+// A komponens betöltésekor automatikusan elindítjuk a séma összefésülését.
 onMounted(async () => {
   schemaError.value = '';
-  if (store.config.column_order && store.config.column_order.length > 0) {
-      console.log("Columns already exist in store.");
-      return;
-  }
   await fetchSchema();
 });
 </script>

@@ -1,3 +1,4 @@
+<!-- Ez a fájl az adatok mentési módját és az exportálási formátumot kezelő wizard lépés. -->
 <template>
   <div class="form-layout">
     <h3>Save Options</h3>
@@ -40,10 +41,12 @@
 
         <div class="form-row">
           <label>Save Destination:</label>
-          <select v-model="store.config.save_option" class="form-control">
-            <option value="todatabase">Database only</option>
-            <option value="createfile">Create file too</option>
-          </select>
+          <div class="destination-select-wrapper">
+            <select v-model="store.config.save_option" class="form-control">
+              <option value="todatabase">Database only</option>
+              <option value="createfile">Create file too</option>
+            </select>
+          </div>
         </div>
 
         <div v-if="store.config.save_option === 'createfile'" class="form-row mt-3 transition-fade">
@@ -65,6 +68,7 @@
 import { computed } from 'vue';
 import { usePipelineStore } from '@/stores/pipelineStore';
 
+// A globális pipeline store elérése a mentési beállítások rögzítéséhez.
 const store = usePipelineStore();
 
 // Alapértelmezett értékek beállítása
@@ -72,19 +76,14 @@ if (!store.config.update_mode) store.config.update_mode = "append";
 if (!store.config.save_option) store.config.save_option = "todatabase";
 if (!store.config.file_format) store.config.file_format = "csv";
 
-/**
- * Számított tulajdonság, ami ellenőrzi, hogy van-e legalább egy 
- * unique-nak jelölt oszlop a field_mappings-ben.
- */
+// Számított tulajdonság, amely ellenőrzi, hogy van-e legalább egy egyedi oszlop kijelölve az upsert módhoz.
 const hasUniqueColumn = computed(() => {
   const mappings = store.config.field_mappings || {};
-  // Megnézzük, hogy van-e olyan bejegyzés, ahol a unique értéke true
   return Object.values(mappings).some((m: any) => m.unique === true);
 });
 </script>
 
 <style scoped>
-/* KONZISZTENS DIZÁJN */
 .form-layout {
   display: flex;
   flex-direction: column;

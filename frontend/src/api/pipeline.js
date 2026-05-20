@@ -1,5 +1,8 @@
-import api from './axios';
+/**
+A fájl az pipeline-ok kezeléséhez szükséges API hívásokat tartalmazza.
+*/
 
+import api from './axios';
 const prefix = '/etl/pipeline';
 
 export const createPipeline = (payload) =>

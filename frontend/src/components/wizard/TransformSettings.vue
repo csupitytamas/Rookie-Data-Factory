@@ -1,3 +1,4 @@
+<!-- A fájl a csoportosítási, rendezési és egyedi SQL lekérdezési beállításokat kezelő wizard lépés. -->
 <template>
   <div class="form-layout">
     <h3>Query Configuration</h3>
@@ -13,6 +14,18 @@
       </div>
 
       <div v-if="transformationType === 'select'" class="settings-box">
+        <div class="form-row">
+          <label>Limit Rows:</label>
+          <input 
+            type="number" 
+            v-model.number="store.config.limit_rows" 
+            placeholder="e.g. 100 (Leave empty for all)"
+            class="form-control"
+            min="1"
+          />
+          <small class="hint-text">Keep only the first N rows of the result.</small>
+        </div>
+
         <div class="form-row">
           <label>Group By Columns:</label>
           <div class="checkbox-group">
@@ -62,8 +75,8 @@
             <div class="tooltip-wrapper">
               <span class="hint-icon">💡</span>
               <div class="tooltip-content">
-               <b>Important</b> refer to the table as <b>input_data</b> in SQL!"<br><br>
-                <i>Example: SELECT * FROM input_data GROUP BY id</i>
+                <b>Flexible Aliasing</b>: You can use <b>any name</b> for the source table (e.g., <i>source</i>, <i>data</i>, <i>input</i>).<br><br>
+                <i>Example: SELECT * FROM my_data GROUP BY id</i>
               </div>
             </div>
           </div>
@@ -102,13 +115,43 @@
           <div class="editor-container">
             <Codemirror
               v-model="store.config.custom_sql"
-              placeholder="SELECT * FROM input_data WHERE..."
+              placeholder="SELECT * FROM any_alias WHERE..."
               :style="{ height: '200px' }"
               :autofocus="true"
               :indent-with-tab="true"
               :tab-size="2"
               :extensions="extensions"
             />
+          </div>
+        </div>
+
+        <!-- SQL EXAMPLES SECTION -->
+        <div class="sql-examples-container">
+          <div class="example-header" @click="showExamples = !showExamples">
+            <span>💡 Quick SQL Examples</span>
+            <span class="toggle-icon">{{ showExamples ? '▼' : '▶' }}</span>
+          </div>
+          
+          <div v-if="showExamples" class="example-content transition-fade">
+            <div class="example-item">
+              <p><strong>Filtering:</strong> Use any alias like <i>source</i>, <i>data</i>, etc.</p>
+              <pre @click="copyToClipboard('SELECT * FROM source WHERE price > 100')">SELECT * FROM source WHERE price > 100</pre>
+            </div>
+            
+            <div class="example-item">
+              <p><strong>Aggregation:</strong> Group your data with a custom name.</p>
+              <pre @click="copyToClipboard('SELECT category, COUNT(*) as total FROM input_data GROUP BY category')">SELECT category, COUNT(*) as total FROM input_data GROUP BY category</pre>
+            </div>
+            
+            <div class="example-item">
+              <p><strong>Calculated Column:</strong> Create new data from any table name.</p>
+              <pre @click="copyToClipboard('SELECT *, (price * 1.27) as price_with_vat FROM my_table')">SELECT *, (price * 1.27) as price_with_vat FROM my_table</pre>
+            </div>
+
+            <div class="example-item">
+              <p><strong>Sorting & Limiting:</strong> Get the top results.</p>
+              <pre @click="copyToClipboard('SELECT * FROM results ORDER BY date DESC LIMIT 10')">SELECT * FROM results ORDER BY date DESC LIMIT 10</pre>
+            </div>
           </div>
         </div>
       </div>
@@ -119,22 +162,25 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { usePipelineStore } from '@/stores/pipelineStore';
-
 import { Codemirror } from 'vue-codemirror';
 import { sql } from '@codemirror/lang-sql';
 import { oneDark } from '@codemirror/theme-one-dark'; 
 
 const store = usePipelineStore();
 const extensions = [sql(), oneDark];
-
 const showSqlHint = ref(false);
+const showExamples = ref(false);
 
+// Összeállítja az összes leképezett oszlop listáját az átnevezések figyelembevételével.
 const allMappedColumns = computed(() => {
   const order = store.config.column_order || [];
   const mappings = store.config.field_mappings || {};
 
+  // Végigmegyünk az eredeti oszlopneveken és kinyerjük a megjelenítendő (alias) nevüket.
   return order.map(origName => {
     const mapping = mappings[origName];
+
+    // Ha az oszlopot átnevezték, az új nevet használjuk; ellenkező esetben az eredetit.
     const displayName = (mapping?.rename && mapping?.newName && mapping.newName.trim() !== '') 
       ? mapping.newName.trim() 
       : origName;
@@ -146,17 +192,20 @@ const allMappedColumns = computed(() => {
   });
 });
 
+// A ténylegesen aktív (nem törölt) oszlopok megjelenítendő neveinek listája.
 const activeColumns = computed(() => {
   return allMappedColumns.value
     .filter(c => !c.deleted)
     .map(c => c.displayName);
 });
 
+// Az eredeti forrás oszlopok listája (pl. a másolható tagekhez a custom SQL-nél).
 const sourceColumns = computed(() => {
-  // SQL-nél az összes oszlop elérhető a nyers adatból
   return store.config.column_order || [];
 });
 
+
+// Be- és kikapcsolja egy oszlop 'törölt' állapotát.
 const toggleColumn = (origName: string) => {
   if (!store.config.field_mappings[origName]) {
     store.config.field_mappings[origName] = {};
@@ -164,13 +213,14 @@ const toggleColumn = (origName: string) => {
   store.config.field_mappings[origName].delete = !store.config.field_mappings[origName].delete;
 };
 
+// Vágólapra másolja a megadott szöveget (pl. oszlopnév vagy példa SQL).
 const copyToClipboard = (text: string) => {
   navigator.clipboard.writeText(text).then(() => {
-    console.log(`Copied: ${text}`);
   }).catch(err => {
     console.error('Failed to copy text: ', err);
   });
 };
+
 
 const getInitialType = () => {
   if (store.config.custom_sql) return 'advenced';
@@ -183,9 +233,9 @@ const getInitialType = () => {
   }
   return 'none';
 };
-
 const transformationType = ref(getInitialType());
 
+// Kijelöli az összes oszlopot (törli a 'delete' jelzőt a leképezésből).
 const selectAll = () => {
   allMappedColumns.value.forEach(c => {
     if (store.config.field_mappings[c.origName]) {
@@ -194,6 +244,7 @@ const selectAll = () => {
   });
 };
 
+// Megszünteti az összes oszlop kijelölését (beállítja a 'delete' jelzőt).
 const deselectAll = () => {
   allMappedColumns.value.forEach(c => {
     if (store.config.field_mappings[c.origName]) {
@@ -202,32 +253,37 @@ const deselectAll = () => {
   });
 };
 
+// Figyeli a transzformáció típusának változását és alaphelyzetbe állítja az irreleváns mezőket.
 watch(transformationType, (newVal) => {
  if (!store.config.transformation) {
     store.config.transformation = {};
   }
   store.config.transformation.type = newVal;
-  
+
+  // None választása esetén minden adatot kiürítünk.
   if (newVal === 'none') {
     store.config.custom_sql = null;
     store.config.group_by_columns = [];
     store.config.order_by_column = null;
     store.config.order_direction = 'asc';
-    // Minden oszlop visszakapcsolása
     selectAll();
-  } 
+  }
+
+  // Simple query választása esetén az SQL mezőt töröljük.
   else if (newVal === 'select') {
     store.config.custom_sql = null;
     if (!store.config.group_by_columns) store.config.group_by_columns = [];
     if (!store.config.order_direction) store.config.order_direction = 'asc';
   }
+
+  // Advanced query választása esetén a vizuális beállításokat töröljük.
   else if (newVal === 'advenced') {
     store.config.group_by_columns = [];
     store.config.order_by_column = null;
   }
 });
 
-// Szinkronizáció: ha egy oszlopot törlünk, vegyük ki a Group By-ból és Order By-ból is
+// Dinamikusan eltávolítja a Group By és Order By opciókból azokat az oszlopokat, amelyeket inaktívvá tettek.
 watch(activeColumns, (newActive) => {
   if (store.config.group_by_columns.length > 0) {
      store.config.group_by_columns = store.config.group_by_columns.filter((col: string) => newActive.includes(col));
@@ -524,6 +580,76 @@ label {
 .mt-3 {
   margin-top: 15px;
 }
+
+/* SQL EXAMPLES STYLING */
+.sql-examples-container {
+  margin-top: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: white;
+  overflow: hidden;
+}
+
+.example-header {
+  padding: 10px 15px;
+  background: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 1px solid #e2e8f0;
+  user-select: none;
+}
+
+.example-header:hover {
+  background: #f1f5f9;
+}
+
+.example-content {
+  padding: 15px;
+}
+
+.example-item {
+  margin-bottom: 15px;
+}
+
+.example-item:last-child {
+  margin-bottom: 0;
+}
+
+.example-item p {
+  margin: 0 0 8px 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.example-item pre {
+  background: #f1f5f9;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.8rem;
+  color: #07085e;
+  margin: 0;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+  overflow-x: auto;
+}
+
+.example-item pre:hover {
+  background: #e2e8f0;
+  border-color: #07085e;
+}
+
+.toggle-icon {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
 .transition-fade {
   animation: fadeIn 0.3s ease-in-out;
 }

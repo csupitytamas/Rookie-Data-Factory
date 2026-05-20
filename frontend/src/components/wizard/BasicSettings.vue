@@ -1,3 +1,4 @@
+<!-- A fájl az alapvető (név és forrás) pipeline beállításokat kezelő wizard lépés. -->
 <template>
   <div class="form-layout">
     <h3>Basic Settings</h3>
@@ -39,6 +40,7 @@
 import { getAvailableSources } from '@/api/pipeline';
 import { usePipelineStore } from '@/stores/pipelineStore';
 
+// A BasicSettings komponens a pipeline létrehozásának alapvető adatait kezeli.
 export default {
   name: 'BasicSettings',
   data() {
@@ -46,6 +48,8 @@ export default {
       sources: [],
     };
   },
+
+  // Számított tulajdonságok a globális pipeline store állapotának kényelmes eléréséhez és módosításához.
   computed: {
     store() {
       return usePipelineStore();
@@ -62,6 +66,8 @@ export default {
   mounted() {
     this.fetchSources();
   },
+
+  // Metódusok az elérhető adatforrások listájának dinamikus betöltéséhez a backendtől.
   methods: {
     async fetchSources() {
       try {

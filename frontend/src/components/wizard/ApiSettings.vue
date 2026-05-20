@@ -1,3 +1,4 @@
+<!-- Ez a fájl az API forrás specifikus beállításait kezelő wizard lépés. -->
 <template>
   <div class="form-layout">
     <h3 class="title">API Settings ({{ store.source }})</h3>
@@ -88,30 +89,36 @@ const connectorType = ref<string | null>(null);
 const loading = ref(false);
 const apiError = ref<string | null>(null);
 
-// ÚJ: Figyeljük a paraméterek változását (pl. ha választ egy meetinget)
+// Figyeljük a paraméterek változását, és szükség esetén újratöltjük a dinamikus szűrőket.
 watch(() => ({ ...store.config.parameters }), async (newParams, oldParams) => {
-  // Ha a sportág megváltozott, töröljük a ligát és a keresést
+
+  // Szabály a Football API-hoz: ha a sportág megváltozik, töröljük a függő kiválasztásokat.
   if (newParams.sport_type !== oldParams.sport_type) {
     console.log("Sport type changed, clearing selection...");
     store.config.parameters.league_id = "";
     store.config.parameters.league_search = "";
-    // Várjunk egy picit a Store frissülésre, mielőtt kérünk újat
+
+    // Rövid késleltetés után frissítjük a szűrőket az új sportág alapján.
     setTimeout(() => refreshFilters(connectorType.value!, store.config.parameters), 100);
     return;
   }
 
-  // Csak akkor frissítünk, ha VAN connector_type és VALÓBAN változott valami fontos
+  // Általános paraméterváltozás esetén frissítjük a rendelkezésre álló szűrőopciókat.
   if (connectorType.value && JSON.stringify(newParams) !== JSON.stringify(oldParams)) {
     console.log("Parameters changed, refreshing filters...");
     await refreshFilters(connectorType.value, newParams);
   }
 }, { deep: true });
 
+// Frissíti a legördülő menük tartalmát az aktuálisan kiválasztott paraméterek alapján.
 const refreshFilters = async (type: string, params: any) => {
+
+  // Lekérdezzük az új szűrőopciókat az adott connectorhoz.
   try {
     const filterResponse = await getConnectorFilters(type, params);
     const filterOptions = filterResponse.data;
-    
+
+    // A válasz alapján frissítjük a lokális űrlap opcióit.
     if (filterOptions) {
       Object.keys(filterOptions).forEach((key) => {
         if (configSchema.value[key]) {
@@ -129,9 +136,12 @@ const refreshFilters = async (type: string, params: any) => {
   }
 };
 
+// Betölti a teljes konfigurációs sémát és az alapértelmezett szűrőket az adott forráshoz.
 const loadApiParameterSchema = async (source: string) => {
   loading.value = true;
   apiError.value = null;
+
+  // Lekérjük a rendszerhez igazított sémát, majd ha van meghatározott connector típus, a dinamikus szűrőket is.
   try {
     const schemaResponse = await getFriendlySchemaBySource(source);
     const fullSchema = schemaResponse.data;
@@ -139,15 +149,20 @@ const loadApiParameterSchema = async (source: string) => {
     let mergedSchema = fullSchema.config_schema || {};
 
     if (fullSchema.connector_type) {
+
+      // Lekérdezzük a kezdeti szűrőopciókat.
       try {
-        // Kezdeti betöltés az esetlegesen már meglévő paraméterekkel
         const filterResponse = await getConnectorFilters(fullSchema.connector_type, store.config.parameters);
         const filterOptions = filterResponse.data;
+
+        // Egyesítjük a dinamikus szűrőket az alapértelmezett sémával.
         if (filterOptions && typeof filterOptions === 'object' && !Array.isArray(filterOptions)) {
           Object.keys(filterOptions).forEach((key) => {
             const f = filterOptions[key];
+
+            // Szabványosítjuk az opciók formátumát a UI számára.
             mergedSchema[key] = {
-              type: f.type || "select", // JAVÍTÁS: Használjuk a backend által küldött típust!
+              type: f.type || "select",
               required: f.required ?? true,
               friendly_name: f.label || key,
               description: f.description,
@@ -168,6 +183,8 @@ const loadApiParameterSchema = async (source: string) => {
         }
       }
     }
+
+    // Alkalmazzuk az egyesített sémát a komponens állapotára.
     configSchema.value = mergedSchema;
     if (!store.config.parameters) store.config.parameters = {};
   } catch (error) {
@@ -178,6 +195,7 @@ const loadApiParameterSchema = async (source: string) => {
   }
 };
 
+// Komponens csatolásakor azonnal elindítjuk a séma betöltését, ha már van kiválasztott forrás.
 onMounted(() => {
   if (store.source) loadApiParameterSchema(store.source);
 });

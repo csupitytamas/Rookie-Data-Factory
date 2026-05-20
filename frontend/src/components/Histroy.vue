@@ -1,3 +1,4 @@
+<!-- A fájl a futtatási előzmények és azok logjai megjelenítéséért felelős komponens. -->
 <template>
   <div class="history-page">
     <div class="header">
@@ -95,8 +96,7 @@ import axios from 'axios';
 const historyItems = ref([]);
 const loading = ref(true);
 const error = ref(null);
-const userTimezone = ref('UTC'); 
-
+const userTimezone = ref('UTC');
 const showLogModal = ref(false);
 const logLoading = ref(false);
 const currentLogs = ref("");
@@ -104,8 +104,11 @@ const currentPipelineId = ref(null);
 const isSaving = ref(false); 
 const isSuccess = ref(false); 
 
+// Dátum formázó segédfüggvény, amely a megadott időzónát használja a megjelenítéshez.
 const formatDate = (dateString) => {
   if (!dateString) return '-';
+
+  // Megpróbáljuk feldolgozni a dátumsztringet; ha nincs benne időzóna információ, UTC-nek tekintjük.
   try {
     let date;
     if (typeof dateString === 'string' && !dateString.includes('Z') && !dateString.includes('+')) {
@@ -113,7 +116,9 @@ const formatDate = (dateString) => {
     } else {
       date = new Date(dateString);
     }
-    return date.toLocaleString('hu-HU', {
+
+    // Az időpont formázása a felhasználó által beállított (vagy alapértelmezett) időzóna szerint.
+    return date.toLocaleString('en-US', {
       year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit',
       timeZone: userTimezone.value
@@ -123,9 +128,12 @@ const formatDate = (dateString) => {
   }
 };
 
+// Frissíti a pipeline futtatási előzményeket a backendről.
 const refreshHistory = async () => {
   loading.value = true;
   error.value = null;
+
+  // Lekérdezzük a beállításokat (időzóna) és a teljes futtatási történetet.
   try {
     const settingsRes = await axios.get('http://localhost:8000/etl/settings/');
     userTimezone.value = settingsRes.data?.timezone || 'Europe/Budapest';
@@ -138,12 +146,15 @@ const refreshHistory = async () => {
   }
 };
 
+// Megnyitja a log nézetet egy adott pipeline futtatáshoz és lekéri a részletes naplózást.
 const viewLogs = async (pipelineId) => {
   showLogModal.value = true;
   logLoading.value = true;
   currentLogs.value = "";
   currentPipelineId.value = pipelineId; 
-  isSuccess.value = false; 
+  isSuccess.value = false;
+
+  // Naplófájlok tartalmának lekérése az API-n keresztül.
   try {
     const response = await getPipelineLogs(pipelineId);
     currentLogs.value = response.data.logs;
@@ -154,19 +165,24 @@ const viewLogs = async (pipelineId) => {
   }
 };
 
+// A megjelenített logok letöltése és mentése helyi fájlba az Electron bridge segítségével.
 const downloadLogs = async () => {
   if (!currentLogs.value) return;
   isSaving.value = true;
+
+  // Lekérjük a mentési útvonalat a beállításokból a célkönyvtár meghatározásához.
   try {
     const settingsRes = await axios.get('http://localhost:8000/etl/settings/');
     const basePath = settingsRes.data?.download_path;
-    if (!basePath) return;
 
+    // Fájlnév generálása a pipeline neve és az aktuális időpont alapján.
+    if (!basePath) return;
     const dateStr = new Date().toISOString().replace(/:/g, '-').slice(0, 19); 
     const pipeline = historyItems.value.find(item => item.id === currentPipelineId.value);
     const safeName = pipeline?.pipeline_name.replace(/[^a-zA-Z0-9]/g, '_') || 'logs';
     const fileName = `${safeName}_${dateStr}.txt`;
 
+    // Mentés elindítása az Electron fő folyamatán keresztül a 'Logs' mappába.
     if (window.electron?.saveFileToFolder) {
       await window.electron.saveFileToFolder({ fileName, fileContent: currentLogs.value, basePath, subFolder: 'Logs' });
       isSuccess.value = true;
@@ -179,6 +195,7 @@ const downloadLogs = async () => {
   }
 };
 
+// A log nézet modális ablakának bezárása.
 const closeLogs = () => { showLogModal.value = false; };
 onMounted(refreshHistory);
 </script>

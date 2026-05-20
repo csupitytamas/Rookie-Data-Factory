@@ -1,5 +1,9 @@
+/**
+A fájl a konfigurációl létrehozásához és szerkesztéséhez használt központi Pinia store tartalmazza.
+ */
 import { defineStore } from 'pinia'
 
+// A pipeline konfigurációs adatait leíró interfész.
 export interface ConfigData {
   id?: number | null;
   schedule: string;
@@ -13,6 +17,7 @@ export interface ConfigData {
   group_by_columns?: string[];
   order_by_column?: string | null;
   order_direction?: string | null;
+  limit_rows?: number | null;
   custom_sql?: string | null;
   column_order?: string[];
   update_mode: string;
@@ -21,7 +26,7 @@ export interface ConfigData {
   parameters?: Record<string, any>; 
 }
 
-// Függvényként definiáljuk, hogy mindig új példányt kapjunk!
+// Segédfüggvény az alapértelmezett konfigurációs értékek létrehozásához.
 const createDefaultConfig = (): ConfigData => ({
   id: null,
   schedule: '@daily',
@@ -35,6 +40,7 @@ const createDefaultConfig = (): ConfigData => ({
   group_by_columns: [],
   order_by_column: null,
   order_direction: 'asc',
+  limit_rows: null,
   custom_sql: null,
   column_order: [],
   update_mode: 'append',
@@ -43,12 +49,15 @@ const createDefaultConfig = (): ConfigData => ({
   parameters: {},
 });
 
+// A pipeline-ok létrehozásához és szerkesztéséhez használt központi Pinia store.
 export const usePipelineStore = defineStore('pipeline', {
   state: () => ({
     pipeline_name: '' as string,
     source: '' as string,
     config: createDefaultConfig(),
   }),
+
+  // Műveletek a store állapotának módosításához.
   actions: {
     reset() {
       console.log("Store Reset: Clearing all data.");
@@ -56,10 +65,10 @@ export const usePipelineStore = defineStore('pipeline', {
       this.source = '';
       this.config = createDefaultConfig();
     },
-    
+
+    // Az adott wizard lépéshez tartozó adatok törlése a navigáció során (a folyamatból való kilépés esetén).
     clearStepData(step: number) {
       console.log(`Clearing data for step ${step}...`);
-      
       if (step === 2) {
         this.config.parameters = {};
       }
@@ -79,6 +88,7 @@ export const usePipelineStore = defineStore('pipeline', {
         this.config.group_by_columns = [];
         this.config.order_by_column = null;
         this.config.order_direction = 'asc';
+        this.config.limit_rows = null;
         this.config.custom_sql = null;
       }
       else if (step === 6) {
