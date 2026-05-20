@@ -3,9 +3,9 @@
 Apache Airflow alapú asztali alkalmazás fejlesztése ETL-folyamatok automatizálására és adatgyűjtésre
 
 ## Architektúra
-*   **Frontend:** Vue.js keretrendszer Electron asztali környezetbe csomagolva.
+*   **Frontend:** Vue.js keretrendszer Electron asztali környezetben futattva.
 *   **Backend:** FastAPI, amely a metaadatokat és beállításokat kezeli.
-*   **Adatbázis:** PostgreSQL (konfigurációk és állapotok tárolására).
+*   **Adatbázis:** PostgreSQL (adattáblák, konfigurációk és állapotok tárolására).
 *   **Folyamatkezelés:** Apache Airflow (dinamikusan generált DAG-ok a pipeline-ok futtatására).
 
 ## Telepítés és Futtatás
