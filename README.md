@@ -1,13 +1,15 @@
+# Apache Airflow alapú asztali alkalmazás fejlesztése ETL-folyamatok automatizálására és adatgyűjtésre
+
 # Rookie Data Factory
 
-Apache Airflow alapú asztali alkalmazás fejlesztése ETL-folyamatok automatizálására és adatgyűjtésre
-
-## Architektúra
-*   **Frontend:** Vue.js keretrendszer Electron asztali környezetben futattva.
-*   **Backend:** FastAPI, amely a metaadatokat és beállításokat kezeli.
-*   **Adatbázis:** PostgreSQL (adattáblák, konfigurációk és állapotok tárolására).
-*   **Folyamatkezelés:** Apache Airflow (dinamikusan generált DAG-ok a pipeline-ok futtatására).
+Csupity Tamás 
+SZTE TTIK gazdaságinformatika BSc 
 
 ## Telepítés és Futtatás
-Az alkalmazás konténerizált környezetben fut, a szolgáltatásokat a Docker Compose kezeli.
-A telepítő letölthető innen: https://github.com/csupitytamas/Rookie-Data-Factory/releases/tag/Prod
+Az alkalmazás telepítő letölthető innen: https://github.com/csupitytamas/Rookie-Data-Factory/releases/tag/Prod
+
+Futtatáshoz szükséges docker környzet futtatása.
+Windows környezetben Docker Desktop és WSL futtatása: 
+https://www.docker.com/products/docker-desktop/
+
+
