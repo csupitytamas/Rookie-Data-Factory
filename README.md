@@ -8,7 +8,7 @@ SZTE TTIK gazdaságinformatika BSc
 ## Telepítés és Futtatás
 Az alkalmazás telepítő letölthető innen: https://github.com/csupitytamas/Rookie-Data-Factory/releases/tag/Prod
 
-Futtatáshoz szükséges docker környzet futtatása.
+Docker szükséges a futtatáshoz.
 Windows környezetben Docker Desktop és WSL futtatása: 
 https://www.docker.com/products/docker-desktop/
 
